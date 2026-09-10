@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>GESP赢家宝典 · v9.1 · 学习统计版</title>
+<title>GESP赢家宝典 · v9.2 · 移动端优化版</title>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
@@ -339,15 +339,512 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
 .resume-banner{background:#fef3c7;border:1px solid #fcd34d;border-radius:12px;padding:14px 18px;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}
 .resume-banner .info{font-size:13px;color:#92400e;font-weight:500}
 .resume-banner .btns{display:flex;gap:8px}
-@media(max-width:1024px){.grid-2,.grid-3{grid-template-columns:1fr 1fr}.stat-row{grid-template-columns:1fr 1fr}.sub-chapter-list{grid-template-columns:1fr}.custom-builder{grid-template-columns:1fr}.daily-goal-grid{grid-template-columns:1fr}.daily-goal-right{border-left:none;padding-left:0;border-top:2px solid #c7ddff;padding-top:16px}.type-stats-grid{grid-template-columns:1fr}}
-@media(max-width:768px){.sidebar{width:60px;padding:14px 6px}.sidebar .logo{font-size:0;padding:0 0 14px;text-align:center}.sidebar .logo .sub{font-size:10px}.level-selector{padding:8px 4px}.level-selector label{display:none}.level-selector select{font-size:10px;padding:4px 2px}.nav-list li{padding:8px 6px;justify-content:center;font-size:0}.nav-list li .icon{font-size:18px;width:auto}.sidebar-footer .mode-selector{display:none}.main{padding:14px;max-width:100%}.sync-actions{grid-template-columns:1fr}.sync-grid{grid-template-columns:1fr}.sync-btns .btn{flex:1 1 100%;justify-content:center}.grid-2,.grid-3{grid-template-columns:1fr}.stat-row{grid-template-columns:1fr 1fr}.overview-banner{flex-direction:column}.overview-banner .right{align-items:flex-start;text-align:left}.chapter-item .ch-name,.progress-chapter .name{width:140px}.exam-grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.oj-container{grid-template-columns:1fr}}
-@media(max-width:480px){.exam-grid{grid-template-columns:1fr}.stat-row{grid-template-columns:1fr}.chapter-item .ch-name,.progress-chapter .name{width:100%}}
+/* ==================================================================
+   v9.2 ← 移动端体验重构
+   桌面端（>900px）完全不受影响：所有新组件默认 display:none
+   ================================================================== */
+.mtop,.mtab,.mdrawer,.mdrawer-mask,.msheet,.msheet-mask{display:none}
+
+/* ---------- 平板 / 小笔记本：保留原侧栏但收窄 ---------- */
+@media(max-width:1024px){
+  .grid-2,.grid-3{grid-template-columns:1fr 1fr}
+  .stat-row{grid-template-columns:1fr 1fr}
+  .sub-chapter-list{grid-template-columns:1fr}
+  .custom-builder{grid-template-columns:1fr}
+  .daily-goal-grid{grid-template-columns:1fr}
+  .daily-goal-right{border-left:none;padding-left:0;border-top:2px solid #c7ddff;padding-top:16px}
+  .type-stats-grid{grid-template-columns:1fr}
+  .main{padding:20px 22px 40px}
+}
+
+/* ==================================================================
+   ★ 真正的手机端：≤900px —— 侧边栏退场，改用「顶部栏 + 底部Tab + 抽屉」
+   ================================================================== */
+@media(max-width:900px){
+
+  /* ---- 全局 ---- */
+  html{-webkit-text-size-adjust:100%}
+  body{
+    display:block;
+    padding-top:calc(52px + env(safe-area-inset-top));
+    padding-bottom:calc(60px + env(safe-area-inset-bottom));
+    background:#f4f7fc;
+    overscroll-behavior-y:none;
+  }
+
+  /* ---- 左侧深色导航栏：手机端隐藏 ---- */
+  .sidebar{display:none!important}
+
+  /* ---- 顶部栏 ---- */
+  .mtop{
+    display:flex;align-items:center;gap:10px;
+    position:fixed;top:0;left:0;right:0;z-index:900;
+    height:calc(52px + env(safe-area-inset-top));
+    padding:env(safe-area-inset-top) 12px 0;
+    background:rgba(11,26,51,.96);
+    backdrop-filter:saturate(180%) blur(14px);
+    -webkit-backdrop-filter:saturate(180%) blur(14px);
+    color:#fff;
+    box-shadow:0 1px 12px rgba(11,26,51,.18);
+  }
+  .mtop-btn{
+    width:38px;height:38px;border:none;border-radius:10px;flex-shrink:0;
+    background:rgba(255,255,255,.09);cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .mtop-btn span{display:block;width:16px;height:1.8px;border-radius:2px;background:#dce6f5}
+  .mtop-btn:active{background:rgba(255,255,255,.2)}
+  .mtop-title{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.2}
+  .mtop-name{font-size:15.5px;font-weight:700;letter-spacing:.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mtop-lv{font-size:11px;color:#8fa8c9;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mtop-right{display:flex;gap:6px;flex-shrink:0}
+  .mtop-icon{
+    width:38px;height:38px;border:none;border-radius:10px;color:#dce6f5;
+    background:rgba(255,255,255,.09);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .mtop-icon svg{width:19px;height:19px}
+  .mtop-icon:active{background:rgba(255,255,255,.2)}
+
+  /* ---- 底部 Tab ---- */
+  .mtab{
+    display:flex;align-items:stretch;
+    position:fixed;left:0;right:0;bottom:0;z-index:900;
+    height:calc(60px + env(safe-area-inset-bottom));
+    padding-bottom:env(safe-area-inset-bottom);
+    background:rgba(255,255,255,.97);
+    backdrop-filter:saturate(180%) blur(14px);
+    -webkit-backdrop-filter:saturate(180%) blur(14px);
+    border-top:1px solid #e3eaf4;
+    box-shadow:0 -2px 16px rgba(11,26,51,.07);
+  }
+  .mtab-item{
+    flex:1;position:relative;border:none;background:transparent;cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    padding:6px 2px 4px;color:#94a3b8;font-size:10.5px;font-weight:600;
+    -webkit-tap-highlight-color:transparent;transition:color .18s;
+  }
+  .mtab-item .ti{display:flex;align-items:center;justify-content:center;width:22px;height:22px;transition:transform .2s cubic-bezier(.34,1.56,.64,1)}
+  .mtab-item .ti svg{width:21px;height:21px;stroke-width:1.9;transition:stroke .18s}
+  .mtab-item .ti{color:#94a3b8}
+  .mtab-item .tt{letter-spacing:.3px}
+  .mtab-item.active{color:#1e3a5f}
+  .mtab-item.active .ti{color:#1e3a5f;transform:translateY(-1.5px) scale(1.04)}
+  .mtab-item.active .ti svg{stroke-width:2.2}
+  .mtab-item.active::after{
+    content:'';position:absolute;top:2px;width:22px;height:3px;border-radius:0 0 4px 4px;
+    background:linear-gradient(90deg,#3b82f6,#1e3a5f);
+  }
+  .mtab-item:active .ti{transform:scale(.9)}
+  .mtab-item .tdot{
+    position:absolute;top:8px;right:calc(50% - 16px);
+    width:7px;height:7px;border-radius:50%;background:#ef4444;
+    border:1.5px solid #fff;
+  }
+
+  /* ---- 主内容区 ---- */
+  .main{
+    padding:14px 14px calc(20px + env(safe-area-inset-bottom));
+    max-width:100%!important;
+    min-width:0;
+    width:100%;
+  }
+
+  .page-title{font-size:19px;line-height:1.3;margin-bottom:6px;letter-spacing:.2px}
+  .page-sub{
+    font-size:12.5px;line-height:1.65;margin-bottom:14px;padding:8px 12px;
+    border-left-width:3px;border-radius:0 8px 8px 0;
+  }
+
+  /* ---- 卡片：更紧凑、更轻 ---- */
+  .card{
+    border-radius:16px;padding:15px 16px;margin-bottom:14px;
+    box-shadow:0 1px 3px rgba(11,26,51,.05),0 6px 18px -8px rgba(11,26,51,.1);
+    border:1px solid #eaeff7;
+  }
+  .card-header{margin-bottom:12px;gap:6px}
+  .card-header h3{font-size:15px}
+  .card-header .tag{font-size:11px;padding:2px 9px}
+
+  /* ---- 统计卡：三/两列并排，省纵向空间 ---- */
+  .grid-2{grid-template-columns:1fr 1fr;gap:11px}
+  .grid-3{grid-template-columns:repeat(3,1fr);gap:9px}
+  .grid-4{grid-template-columns:1fr 1fr;gap:10px}
+  .stat-card{
+    border-radius:14px;padding:13px 8px;border:1px solid #e8edf6;
+    text-align:center;min-width:0;
+  }
+  .stat-card .num{font-size:22px;line-height:1.15;letter-spacing:-.5px}
+  .stat-card .label{font-size:10.5px;margin-top:4px;line-height:1.3;color:#7a8aa5}
+  /* 统计卡里若塞的是卡片/列表（非纯数字），退回单列 */
+  .grid-3>.card,.grid-2>.card,.grid-3>.learning-item,.grid-3>.sync-grid{grid-column:1/-1}
+  .stat-row{grid-template-columns:repeat(3,1fr);gap:9px}
+
+  /* ---- 触控目标放大 ---- */
+  .btn{padding:10px 18px;font-size:13.5px;border-radius:22px;min-height:42px}
+  .btn-sm{padding:8px 14px;font-size:12.5px;min-height:36px}
+  .chip{padding:8px 15px;font-size:12.5px;min-height:36px;display:inline-flex;align-items:center}
+  select,input[type=text],input[type=number],input[type=date],textarea{
+    font-size:16px!important; /* 防 iOS 聚焦缩放 */
+    min-height:42px;
+  }
+  .chip-group{gap:8px}
+
+  /* ---- 表单：手机端单列 ---- */
+  .form-grid,.custom-builder,.sync-grid,.oj-container,.type-stats-grid,
+  .daily-goal-grid,.sub-chapter-list,.exam-grid{grid-template-columns:1fr}
+  .sync-actions{grid-template-columns:1fr 1fr}
+  .sync-btns{flex-wrap:wrap;gap:10px}
+  .sync-btns .btn{flex:1 1 100%;justify-content:center;min-height:44px}
+  .daily-goal-right{border-left:none;padding-left:0;border-top:2px solid #c7ddff;padding-top:14px}
+
+  /* ---- 概览头部 Banner：竖排、倒计时居中 ---- */
+  .overview-banner{
+    flex-direction:column;align-items:stretch;gap:14px;
+    padding:18px 16px;border-radius:18px;
+  }
+  .overview-banner .right{align-items:flex-start;text-align:left}
+  .countdown-days{font-size:38px!important;line-height:1.1}
+  .overview-banner .declaration{font-size:14.5px!important;padding:10px 14px!important;border-radius:14px!important}
+  .overview-banner .btn-sm{flex:1;justify-content:center}
+
+  /* ---- 自由组题：手机端两列紧凑排布，输入框与标题同行 ---- */
+  .custom-builder{grid-template-columns:1fr 1fr;gap:9px;margin-bottom:12px}
+  .custom-type-box{padding:11px 12px;border-radius:12px}
+  .custom-type-box .ct-title{font-size:12.5px;margin-bottom:4px}
+  .custom-type-box .ct-avail{font-size:11px;margin-bottom:0;color:#7a8aa5}
+  .custom-type-box input[type="number"]{
+    margin-top:9px;padding:8px 11px;font-size:16px!important;font-weight:600;
+    text-align:center;min-height:38px;border-radius:9px;
+  }
+  /* 第三个（编程题）独占一行铺满 */
+  .custom-builder .custom-type-box:nth-child(3){grid-column:1/-1}
+  .custom-builder .custom-type-box:nth-child(3) input[type="number"]{text-align:left}
+
+  .custom-presets{gap:8px;margin-bottom:12px}
+  .custom-presets>span{font-size:11.5px;width:100%;color:#7a8aa5}
+  .custom-presets .btn-sm{flex:1 1 calc(50% - 4px);justify-content:center;background:#fff}
+  .custom-options{gap:10px 14px;margin-bottom:12px;font-size:12.5px}
+  .custom-options label{
+    display:flex;align-items:center;gap:7px;padding:7px 11px;border-radius:10px;
+    background:#f8faff;border:1px solid #e8edf6;
+  }
+  .custom-options input[type="checkbox"]{width:17px;height:17px;accent-color:#3b82f6}
+  .custom-options .btn-blue{margin-left:0!important;width:100%;margin-top:4px;justify-content:center}
+
+  /* ---- 卡片右上角按钮组：手机端两列铺满 ---- */
+  .card-header>div[style*="display:flex"]{
+    width:100%;display:grid!important;grid-template-columns:1fr 1fr;gap:8px!important;
+  }
+  .card-header>div[style*="display:flex"]>.btn{
+    width:100%;justify-content:center;margin:0;
+  }
+  .card-header>div[style*="display:flex"]>.btn:nth-child(3):last-child{
+    grid-column:1/-1;background:#1e3a5f;color:#fff;border-color:#1e3a5f;
+  }
+  .card-header>div[style*="display:flex"]>.btn:nth-child(3):last-child:hover{color:#fff}
+
+  /* ---- 模考估分：卡片紧凑化 ---- */
+  .exam-grid{grid-template-columns:1fr;gap:11px}
+  .exam-card{padding:13px 14px;border-radius:14px}
+  .exam-card .title{
+    font-size:14.5px;display:flex;align-items:center;gap:6px;flex-wrap:wrap;
+  }
+  .exam-card .info{
+    font-size:11.5px;margin:6px 0 4px;line-height:1.6;color:#7a8aa5;
+  }
+  .exam-card .info span{margin-right:10px}
+  .exam-card .btn,.exam-card .btn-sm{
+    margin-top:9px!important;width:100%;justify-content:center;
+    min-height:40px;font-size:13px;border-radius:12px;
+  }
+  .exam-card>div[style*="margin-bottom:8px"]{margin-bottom:2px!important}
+  .status-badge{margin-left:0}
+
+  /* ---- 题目列表行：题干在上、操作按钮在下，避免文字被挤压 ---- */
+  .prog-item{
+    display:block;padding:13px 12px;border-radius:12px;margin-bottom:8px;
+    background:#f8faff;border:1px solid #edf2f9;border-bottom:1px solid #edf2f9;
+  }
+  .prog-item>span:first-child{
+    display:block;font-size:13.5px!important;line-height:1.55;color:#1e293b;
+    margin-bottom:10px;
+  }
+  .prog-item>span:last-child{
+    display:flex!important;gap:8px!important;justify-content:flex-end;
+  }
+  .prog-item>span:last-child .btn{flex:0 0 auto;min-width:66px;justify-content:center}
+
+  /* ---- 章节/进度行：三段式网格（标题 / 进度条 / 计数） ---- */
+  /* 题库浏览的 .chapter-item：结构为 name + tag + bar + count + pct */
+  .chapter-item{
+    display:grid;
+    grid-template-columns:1fr auto auto;
+    grid-template-areas:
+      "name   name  name"
+      "bar    bar   bar"
+      "count  tag   pct";
+    align-items:center;gap:7px 8px;padding:14px 0;
+    border-bottom:1px solid #f1f5fa;
+  }
+  .chapter-item:last-child{border-bottom:none}
+  .chapter-item .ch-name{
+    grid-area:name;width:auto!important;font-size:14px;font-weight:650;color:#0b1a33;
+    display:flex;align-items:baseline;gap:6px;flex-wrap:wrap;line-height:1.35;
+  }
+  .chapter-item .ch-name small{font-size:11.5px;color:#7a8aa5;font-weight:500}
+  .chapter-item .ch-bar{
+    grid-area:bar;width:100%;min-width:0;height:6px;border-radius:6px;
+    background:#e8edf6;overflow:hidden;
+  }
+  .chapter-item .ch-bar .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#60a5fa,#3b82f6)}
+  .chapter-item .ch-count{
+    grid-area:count;width:auto!important;text-align:left;font-size:14px;font-weight:700;color:#0b1a33;
+  }
+  .chapter-item .ch-count::after{content:' 题';font-size:11px;font-weight:500;color:#94a3b8}
+  .chapter-item .ch-tag{grid-area:tag;justify-self:start;font-size:11px;padding:2px 8px;border-radius:8px}
+  .chapter-item .ch-pct{
+    grid-area:pct;width:auto!important;text-align:right;font-size:12px;
+    font-weight:600;color:#5e6f8d;
+  }
+
+  /* 我的进度的 .progress-chapter：结构为 name + bar + info */
+  .progress-chapter{
+    display:grid;grid-template-columns:1fr auto;
+    grid-template-areas:"name name" "bar bar" "info info";
+    align-items:center;gap:6px 8px;padding:13px 0;border-bottom:1px solid #f1f5fa;
+  }
+  .progress-chapter:last-child{border-bottom:none}
+  .progress-chapter .name{
+    grid-area:name;width:auto!important;font-size:14px;font-weight:650;color:#0b1a33;line-height:1.35;
+  }
+  .progress-chapter .bar{
+    grid-area:bar;width:100%;height:6px;border-radius:6px;background:#e8edf6;overflow:hidden;
+  }
+  .progress-chapter .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,#60a5fa,#3b82f6)}
+  .progress-chapter .info{
+    grid-area:info;width:auto!important;text-align:left;font-size:11.5px;color:#7a8aa5;
+  }
+  .progress-chapter>*,.chapter-item>*{min-width:0}
+
+  /* ---- 题目列表：操作按钮换行到独立一行 ---- */
+  .question-item,.q-item{border-radius:14px;padding:14px}
+  .q-actions,.question-actions{width:100%;justify-content:flex-end;margin-top:10px}
+
+  /* ---- 表格：可横向滚动而不撑破布局 ---- */
+  table{font-size:12.5px}
+  .card>table,.card table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch;white-space:nowrap}
+
+  /* ---- 弹窗：手机端变成底部抽屉式 ---- */
+  .modal-content{
+    border-radius:20px 20px 0 0;
+    padding:20px 18px calc(20px + env(safe-area-inset-bottom));
+    max-height:88vh;width:100%;
+  }
+  .modal-overlay{align-items:flex-end!important;padding:0!important}
+  .modal-actions{position:sticky;bottom:0;background:#fff;padding-top:12px}
+  .modal-actions .btn{flex:1;justify-content:center}
+
+  /* ---- 提示条 ---- */
+  #toast,.toast{left:14px!important;right:14px!important;transform:none!important;width:auto!important}
+
+  /* ---- 更多页：工具宫格 ---- */
+  .m-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .m-tool{
+    display:flex;flex-direction:column;align-items:flex-start;gap:2px;
+    padding:14px 12px;border-radius:14px;cursor:pointer;text-align:left;
+    background:#f8faff;border:1px solid #e8eef8;color:#1e293b;
+    -webkit-tap-highlight-color:transparent;transition:transform .15s,background .15s;
+    font-family:inherit;
+  }
+  .m-tool:active{transform:scale(.97);background:#eef3fc}
+  .m-tool .mi{display:flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:10px;background:rgba(11,26,51,.045);margin-bottom:8px}
+  .m-tool .mi svg{width:18px;height:18px}
+  .m-tool b{font-size:13.5px;font-weight:650;color:#0b1a33}
+  .m-tool i{font-size:11px;font-style:normal;color:#7a8aa5;line-height:1.4}
+
+  /* ---- 抽屉 ---- */
+  .mdrawer-mask{
+    display:block;position:fixed;inset:0;z-index:950;
+    background:rgba(11,26,51,.5);backdrop-filter:blur(2px);
+    opacity:0;pointer-events:none;transition:opacity .26s;
+  }
+  .mdrawer-mask.open{opacity:1;pointer-events:auto}
+  .mdrawer{
+    display:flex;flex-direction:column;
+    position:fixed;top:0;left:0;bottom:0;z-index:960;
+    width:min(80vw,300px);
+    background:#0b1a33;color:#e8edf5;
+    transform:translateX(-102%);
+    transition:transform .3s cubic-bezier(.32,.72,0,1);
+    box-shadow:6px 0 30px rgba(11,26,51,.35);
+    padding-top:env(safe-area-inset-top);
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+  .mdrawer.open{transform:translateX(0)}
+  .mdrawer-head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 16px 14px;border-bottom:1px solid rgba(255,255,255,.07);
+  }
+  .mdrawer-logo{font-size:15px;font-weight:700;color:#fff}
+  .mdrawer-close{
+    width:32px;height:32px;border:none;border-radius:9px;cursor:pointer;
+    background:rgba(255,255,255,.08);color:#b0c4de;font-size:14px;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .mdrawer-lv{padding:12px 16px;border-bottom:1px solid rgba(255,255,255,.07)}
+  .mdrawer-lv label{font-size:11px;color:#7a8aa5;display:block;margin-bottom:5px}
+  .mdrawer-lv select{
+    width:100%;background:rgba(59,130,246,.15);color:#93bbfc;
+    border:1px solid rgba(59,130,246,.3);border-radius:10px;
+    padding:10px 12px;font-size:13px;font-weight:600;outline:none;
+    -webkit-appearance:none;appearance:none;
+  }
+  .mdrawer-lv select option{background:#0b1a33;color:#fff}
+  .mdrawer-body{flex:1;overflow-y:auto;padding:8px 10px 16px;-webkit-overflow-scrolling:touch}
+  .mdrawer-sec{font-size:10.5px;color:#63748f;letter-spacing:.5px;font-weight:700;padding:12px 8px 6px}
+  .mdrawer-item{
+    display:flex;align-items:center;gap:11px;width:100%;
+    padding:12px 12px;margin-bottom:2px;border:none;border-radius:11px;
+    background:transparent;color:#b0c4de;font-size:14px;font-weight:500;
+    cursor:pointer;text-align:left;font-family:inherit;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .mdrawer-item .di{display:flex;align-items:center;justify-content:center;width:22px;height:22px;flex-shrink:0;color:#7f93b0}
+  .mdrawer-item .di svg{width:19px;height:19px}
+  .mdrawer-item.active .di{color:#93bbfc}
+  .mdrawer-item .dtext{flex:1}
+  .mdrawer-item .dbadge{
+    background:#3b82f6;color:#fff;font-size:10px;font-weight:700;
+    padding:2px 8px;border-radius:10px;
+  }
+  .mdrawer-item:active{background:rgba(255,255,255,.08)}
+  .mdrawer-item.active{background:#1e3a5f;color:#fff}
+  .mdrawer-foot{padding:12px 16px;border-top:1px solid rgba(255,255,255,.07);font-size:10.5px;color:#5b6c88;text-align:center}
+
+  /* ---- 底部 Sheet ---- */
+  .msheet-mask{
+    display:block;position:fixed;inset:0;z-index:970;
+    background:rgba(11,26,51,.5);backdrop-filter:blur(2px);
+    opacity:0;pointer-events:none;transition:opacity .26s;
+  }
+  .msheet-mask.open{opacity:1;pointer-events:auto}
+  .msheet{
+    display:flex;flex-direction:column;
+    position:fixed;left:0;right:0;bottom:0;z-index:980;
+    background:#fff;border-radius:22px 22px 0 0;
+    max-height:72vh;
+    transform:translateY(102%);
+    transition:transform .3s cubic-bezier(.32,.72,0,1);
+    padding-bottom:env(safe-area-inset-bottom);
+    box-shadow:0 -6px 30px rgba(11,26,51,.22);
+  }
+  .msheet.open{transform:translateY(0)}
+  .msheet-grip{width:38px;height:4px;border-radius:4px;background:#dbe3ef;margin:10px auto 0;flex-shrink:0}
+  .msheet-title{font-size:16px;font-weight:700;color:#0b1a33;padding:12px 20px 10px;border-bottom:1px solid #f1f5fa;flex-shrink:0}
+  .msheet-body{overflow-y:auto;padding:8px 12px 16px;-webkit-overflow-scrolling:touch}
+  .msheet-group{font-size:10.5px;color:#7a8aa5;font-weight:700;letter-spacing:.5px;padding:12px 10px 6px}
+  .msheet-opt{
+    display:flex;align-items:center;justify-content:space-between;width:100%;
+    padding:13px 12px;border:none;border-radius:12px;background:transparent;
+    font-size:14.5px;color:#1e293b;cursor:pointer;text-align:left;font-family:inherit;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .msheet-opt:active{background:#f1f5fa}
+  .msheet-opt.active{background:#eef4ff;color:#1e3a5f;font-weight:700}
+  .msheet-opt .chk{color:#3b82f6;font-weight:700}
+
+  /* ---- 云同步页状态条 ---- */
+  .sync-status-bar{flex-wrap:wrap;gap:8px;padding:12px 14px;border-radius:14px}
+  .sync-banner{flex-wrap:wrap;gap:8px}
+}
+
+/* ---------- 极窄屏（折叠屏外屏 / 老机型） ---------- */
+@media(max-width:345px){
+  .grid-2,.grid-3,.grid-4{grid-template-columns:1fr!important}
+  .stat-row{grid-template-columns:1fr 1fr}
+  .m-grid{grid-template-columns:1fr}
+  .overview-banner{padding:16px 14px}
+  .countdown-days{font-size:30px!important}
+  .main{padding:11px 10px calc(16px + env(safe-area-inset-bottom))}
+  .card{padding:12px 12px}
+  .stat-card{padding:10px 5px}
+  .stat-card .num{font-size:19px}
+}
+
+/* ---------- 超小屏（iPhone SE / 折叠屏外屏） ---------- */
+@media(max-width:400px){
+  .mtop-name{font-size:14.5px}
+  .main{padding:12px 11px calc(18px + env(safe-area-inset-bottom))}
+  .page-title{font-size:17.5px}
+  .stat-card .num{font-size:20px}
+  .stat-card{padding:11px 6px}
+  .stat-card .label{font-size:10px}
+  .grid-3{gap:7px}
+  .grid-2{gap:9px}
+  .mtab-item .tt{font-size:10px}
+  .countdown-days{font-size:32px!important}
+  .btn{padding:9px 14px;font-size:13px}
+  .card{padding:13px 13px;border-radius:14px}
+}
+
+/* ---------- 横屏矮屏：节省纵向空间 ---------- */
+@media(max-width:900px) and (max-height:460px){
+  body{padding-top:46px}
+  .mtop{height:calc(46px + env(safe-area-inset-top));padding-top:env(safe-area-inset-top)}
+  .mtop-btn,.mtop-icon{width:34px;height:34px}
+  .mtab{height:calc(52px + env(safe-area-inset-bottom))}
+  .mtab-item .ti{font-size:17px}
+  .mtab-item .tt{display:none}
+}
+
+/* ---------- 桌面端（>900px）：新组件全部隐藏、布局保持原样 ---------- */
+@media(min-width:901px){
+  .mtop,.mtab,.mdrawer,.mdrawer-mask,.msheet,.msheet-mask{display:none!important}
+  #page-more{display:none!important}
+}
+
+/* ---------- 暗色模式适配（手机端夜间护眼） ---------- */
+@media(max-width:900px) and (prefers-color-scheme:dark){
+  body{background:#0f172a}
+  .main{color:#e2e8f0}
+  .page-title{color:#f1f5f9}
+  .page-sub{background:rgba(59,130,246,.12);color:#a8bbd4}
+  .card{background:#1a2436;border-color:#28354a;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .card-header h3{color:#f1f5f9}
+  .stat-card{background:#212d42;border-color:#2e3d55}
+  .stat-card .num{color:#f1f5f9}
+  .stat-card .label{color:#93a4bd}
+  .mtab{background:rgba(20,29,45,.97);border-top-color:#28354a}
+  .mtab-item{color:#7d8ea6}
+  .mtab-item.active{color:#7fb0ff}
+  .mtab-item.active .ti{color:#7fb0ff}
+  .m-tool{background:#212d42;border-color:#2e3d55;color:#e2e8f0}
+  .m-tool .mi{background:rgba(255,255,255,.07)}
+  .m-tool b{color:#f1f5f9}
+  .m-tool i{color:#8b9cb5}
+  .m-tool:active{background:#28354a}
+  .btn{background:#28354a;color:#e2e8f0}
+  .btn-outline{border-color:#3b4a63}
+  .chip{background:#28354a;color:#cfdaea}
+  .chip.blue{background:#1e3a5f;color:#93bbfc}
+  .modal-content{background:#1a2436}
+  .modal-content h3{color:#f1f5f9}
+  .msheet{background:#1a2436}
+  .msheet-title{color:#f1f5f9;border-bottom-color:#28354a}
+  .msheet-opt{color:#e2e8f0}
+  .msheet-opt.active{background:#1e3a5f;color:#93bbfc}
+  .progress-chapter{border-bottom-color:#28354a}
+}
+
 </style>
 </head>
 <body>
 
 <aside class="sidebar">
-    <div class="logo">🏆 GESP赢家宝典 <span class="sub">v9.1</span></div>
+    <div class="logo">🏆 GESP赢家宝典 <span class="sub">v9.2</span></div>
     <div class="level-selector">
         <label>📚 当前级别</label>
         <select id="levelSelector" onchange="switchLevel(this.value)">
@@ -404,6 +901,50 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
     <input type="file" id="fileInput" class="file-input-hidden" accept=".xlsx,.xls,.csv" onchange="importExcel(event)">
     <input type="file" id="jsonInput" class="file-input-hidden" accept=".json" onchange="importAllData(event)">
 </aside>
+
+<!-- ============ 移动端顶部栏 ============ -->
+<header class="mtop" id="mtop">
+    <button class="mtop-btn" onclick="toggleDrawer(true)" aria-label="菜单"><span></span><span></span><span></span></button>
+    <div class="mtop-title">
+        <span class="mtop-name" id="mtopName">总览</span>
+        <span class="mtop-lv" id="mtopLevel">C++ 一级</span>
+    </div>
+    <div class="mtop-right">
+        <button class="mtop-icon" onclick="openLevelPicker()" title="切换级别" aria-label="切换级别"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg></button>
+        <button class="mtop-icon" onclick="openAllPages()" title="全部页面" aria-label="全部页面"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+    </div>
+</header>
+
+<!-- ============ 移动端底部 Tab ============ -->
+<nav class="mtab" id="mtab">
+    <button class="mtab-item active" data-tab="page-overview" onclick="switchPage('page-overview')"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg></span><span class="tt">总览</span></button>
+    <button class="mtab-item" data-tab="page-browse" onclick="switchPage('page-browse')"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg></span><span class="tt">题库</span></button>
+    <button class="mtab-item" data-tab="page-practice" onclick="switchPage('page-practice')"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></span><span class="tt">刷题</span></button>
+    <button class="mtab-item" data-tab="page-progress" onclick="switchPage('page-progress')"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/></svg></span><span class="tt">进度</span></button>
+    <button class="mtab-item" data-tab="page-more" onclick="switchPage('page-more')"><span class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><span class="tt">更多</span><span class="tdot" id="tabDot" style="display:none;"></span></button>
+</nav>
+
+<!-- ============ 抽屉菜单 ============ -->
+<div class="mdrawer-mask" id="drawerMask" onclick="toggleDrawer(false)"></div>
+<aside class="mdrawer" id="mdrawer">
+    <div class="mdrawer-head">
+        <div class="mdrawer-logo">🏆 GESP赢家宝典</div>
+        <button class="mdrawer-close" onclick="toggleDrawer(false)">✕</button>
+    </div>
+    <div class="mdrawer-lv">
+        <label>当前级别</label>
+        <select id="levelSelectorMobile" onchange="switchLevel(this.value)"></select>
+    </div>
+    <div class="mdrawer-body" id="mdrawerList"></div>
+</aside>
+
+<!-- ============ 级别选择弹层 ============ -->
+<div class="msheet-mask" id="sheetMask" onclick="closeSheet()"></div>
+<div class="msheet" id="msheet">
+    <div class="msheet-grip"></div>
+    <div class="msheet-title" id="sheetTitle">选择级别</div>
+    <div class="msheet-body" id="sheetBody"></div>
+</div>
 
 <div class="main">
 
@@ -716,6 +1257,41 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
         <div class="page-title">⭐ 我的收藏</div>
         <div class="page-sub">收藏的题目，快速回顾</div>
         <div class="card"><div class="empty-state"><div class="big-icon">⭐</div><h4>还没有收藏的题目</h4><p>在题库浏览中点击题目右上角的 ☆ 即可收藏</p></div></div>
+    </div>
+
+    <div class="page" id="page-more">
+        <div class="page-title">🧩 更多功能</div>
+        <div class="page-sub">错题本、排行榜、收藏、云同步与数据备份 · 按需进入</div>
+
+        <div class="card">
+            <div class="card-header"><h3>📂 学习与记录</h3></div>
+            <div class="m-grid">
+                <button class="m-tool" onclick="switchPage('page-errors')"><span class="mi" style="color:#ef4444"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></span><b>错题本</b><i>回顾做错的题</i></button>
+                <button class="m-tool" onclick="switchPage('page-fav')"><span class="mi" style="color:#f59e0b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5l2.9 6.2 6.6.8-4.9 4.5 1.3 6.6L12 17.4l-5.9 3.2 1.3-6.6-4.9-4.5 6.6-.8z"/></svg></span><b>我的收藏</b><i>标记的重点题</i></button>
+                <button class="m-tool" onclick="switchPage('page-rank')"><span class="mi" style="color:#3b82f6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v5a6 6 0 0 1-12 0z"/><path d="M6 6H3.5v1.5A3.5 3.5 0 0 0 6 11"/><path d="M18 6h2.5v1.5A3.5 3.5 0 0 1 18 11"/><path d="M12 15v3M8.5 21h7"/></svg></span><b>排行榜</b><i>做题量对比</i></button>
+                <button class="m-tool" onclick="switchPage('page-coding')"><span class="mi" style="color:#8b5cf6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 17l-5-5 5-5M16 7l5 5-5 5"/></svg></span><b>编程题</b><i>代码题专项</i></button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header"><h3>⚙️ 数据管理</h3></div>
+            <div class="m-grid">
+                <button class="m-tool" onclick="switchPage('page-sync');renderSync();"><span class="mi" style="color:#6366f1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6.5 6.5 0 0 0 5.2 10.5 4 4 0 0 0 6 19z"/></svg></span><b>云同步</b><i>多设备共用数据</i></button>
+                <button class="m-tool" onclick="document.getElementById('fileInput').click()"><span class="mi" style="color:#3b82f6"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg></span><b>导入 Excel</b><i>批量导入题目</i></button>
+                <button class="m-tool" onclick="exportExcel()"><span class="mi" style="color:#10b981"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg></span><b>导出 Excel</b><i>导出当前级别题库</i></button>
+                <button class="m-tool" onclick="exportAllData()"><span class="mi" style="color:#f59e0b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg></span><b>备份 JSON</b><i>全量数据备份</i></button>
+                <button class="m-tool" onclick="document.getElementById('jsonInput').click()"><span class="mi" style="color:#f97316"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M3.5 13a9 9 0 1 0 2.1-6.4L3 9"/></svg></span><b>恢复 JSON</b><i>从备份还原</i></button>
+                <button class="m-tool" onclick="openLevelPicker()"><span class="mi" style="color:#0ea5e9"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg></span><b>切换级别</b><i>当前：--</i></button>
+            </div>
+            <div class="m-grid" style="margin-top:10px;">
+                <button class="m-tool" onclick="openAllPages()"><span class="mi" style="color:#64748b"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span><b>全部页面</b><i>展开完整菜单</i></button>
+            </div>
+        </div>
+
+        <div class="card" style="text-align:center;color:#7a8aa5;font-size:12px;">
+            🏆 GESP赢家宝典 v9.2 · 移动端优化版<br>
+            <span style="opacity:.7;">数据保存在本机浏览器，建议定期备份</span>
+        </div>
     </div>
 
     <div class="page" id="page-sync">
@@ -2683,7 +3259,8 @@ const pages = {
     'page-progress': document.getElementById('page-progress'),
     'page-rank': document.getElementById('page-rank'),
     'page-fav': document.getElementById('page-fav'),
-    'page-sync': document.getElementById('page-sync')
+    'page-sync': document.getElementById('page-sync'),
+    'page-more': document.getElementById('page-more')
 };
 function switchPage(id) {
     Object.values(pages).forEach(p => p.classList.remove('active'));
@@ -3364,10 +3941,332 @@ document.getElementById('levelSelector').value = currentLevel;
 renderAll();
 updateCountdown();
 if (syncConfig.autoCheck && syncConfig.token) setTimeout(syncAutoCheckCloud, 1000);
-console.log('🏆 GESP赢家宝典 v9.1 已加载！');
+console.log('🏆 GESP赢家宝典 v9.2 已加载！');
 console.log('📚 当前级别：' + LEVEL_NAMES[currentLevel] + '，共 ' + questions.length + ' 道题');
 console.log('💾 数据来源：' + (loaded ? 'localStorage（上次保存）' : '默认初始数据'));
 console.log('⏳ 倒计时可编辑 · 🎯 每日目标可设置 · 📊 做题数据自动记录');
+
+
+/* ================================================================
+   20. 【v9.2】移动端交互层
+   —— 桌面端不受影响：仅在窄屏渲染顶部栏/底部Tab/抽屉
+   ================================================================ */
+(function(){
+    const MQ = window.matchMedia('(max-width:900px)');
+    const isMobile = () => MQ.matches;
+
+    /* 页面 id → 顶部栏标题 */
+    const PAGE_TITLES = {
+        'page-overview':'总览','page-browse':'题库浏览','page-learning':'学习库',
+        'page-practice':'刷题自测','page-ai':'智能推题','page-exam':'模考估分',
+        'page-coding':'编程题','page-errors':'错题本','page-progress':'我的进度',
+        'page-rank':'排行榜','page-fav':'我的收藏','page-sync':'数据云同步',
+        'page-more':'更多功能'
+    };
+    /* 线性图标（用 SVG 保证各平台渲染一致，不再依赖 emoji 字体） */
+    const _S = p => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+    const DI = {
+        'page-overview': _S('<rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/>'),
+        'page-browse'  : _S('<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>'),
+        'page-learning': _S('<path d="M2 4h6a4 4 0 0 1 4 4v12a3 3 0 0 0-3-3H2z"/><path d="M22 4h-6a4 4 0 0 0-4 4v12a3 3 0 0 1 3-3h7z"/>'),
+        'page-practice': _S('<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+        'page-ai'      : _S('<rect x="4" y="8" width="16" height="12" rx="3"/><path d="M12 8V4M9 3h6"/><circle cx="9" cy="14" r="1.2" fill="currentColor" stroke="none"/><circle cx="15" cy="14" r="1.2" fill="currentColor" stroke="none"/>'),
+        'page-exam'    : _S('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M9 15l2 2 4-4"/>'),
+        'page-coding'  : _S('<path d="M8 17l-5-5 5-5M16 7l5 5-5 5"/>'),
+        'page-errors'  : _S('<circle cx="12" cy="12" r="9"/><path d="M15 9l-6 6M9 9l6 6"/>'),
+        'page-progress': _S('<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>'),
+        'page-rank'    : _S('<path d="M6 4h12v5a6 6 0 0 1-12 0z"/><path d="M6 6H3.5v1.5A3.5 3.5 0 0 0 6 11"/><path d="M18 6h2.5v1.5A3.5 3.5 0 0 1 18 11"/><path d="M12 15v3M8.5 21h7"/>'),
+        'page-fav'     : _S('<path d="M12 2.5l2.9 6.2 6.6.8-4.9 4.5 1.3 6.6L12 17.4l-5.9 3.2 1.3-6.6-4.9-4.5 6.6-.8z"/>'),
+        'page-sync'    : _S('<path d="M17.5 19a4.5 4.5 0 0 0 .5-8.97A6.5 6.5 0 0 0 5.2 10.5 4 4 0 0 0 6 19z"/><path d="M12 12v6M9.5 15.5L12 18l2.5-2.5"/>'),
+        'page-more'    : _S('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>')
+    };
+
+    /* 抽屉里的完整导航（分组 + 图标） */
+    const DRAWER_NAV = [
+        {sec:'学习'},
+        {id:'page-overview',icon:'📊',text:'总览'},
+        {id:'page-browse',icon:'📚',text:'题库浏览'},
+        {id:'page-learning',icon:'📖',text:'学习库',badge:'learningBadge'},
+        {id:'page-practice',icon:'✏️',text:'刷题自测'},
+        {id:'page-ai',icon:'🤖',text:'智能推题'},
+        {id:'page-exam',icon:'📝',text:'模考估分'},
+        {id:'page-coding',icon:'💻',text:'编程题'},
+        {sec:'我的'},
+        {id:'page-errors',icon:'❌',text:'错题本'},
+        {id:'page-progress',icon:'📈',text:'我的进度'},
+        {id:'page-rank',icon:'🏆',text:'排行榜'},
+        {id:'page-fav',icon:'⭐',text:'我的收藏'},
+        {sec:'数据'},
+        {id:'page-sync',icon:'☁️',text:'云同步',badge:'syncNavBadge'},
+        {id:'page-more',icon:'🧩',text:'更多功能'}
+    ];
+    const LEVEL_GROUPS = [
+        {label:'C++', codes:['cpp1','cpp2','cpp3','cpp4','cpp5','cpp6','cpp7','cpp8']},
+        {label:'Python', codes:['python1','python2','python3','python4','python5','python6']}
+    ];
+    const LV_SHORT = code => {
+        const m = /^([a-z]+)(\d+)$/.exec(code);
+        if (!m) return code;
+        const cn = ['','一','二','三','四','五','六','七','八'];
+        return (m[1] === 'cpp' ? 'C++ ' : 'Python ') + (cn[+m[2]] || m[2]) + ' 级';
+    };
+
+    /* ---------------- 1. 抽屉渲染 ---------------- */
+    const drawerList = document.getElementById('mdrawerList');
+    if (drawerList) {
+        let html = '';
+        DRAWER_NAV.forEach(item => {
+            if (item.sec) { html += '<div class="mdrawer-sec">' + item.sec + '</div>'; return; }
+            html += '<button class="mdrawer-item" data-goto="' + item.id + '">' +
+                    '<span class="di">' + (DI[item.id] || item.icon) + '</span>' +
+                    '<span class="dtext">' + item.text + '</span>' +
+                    (item.badge ? '<span class="dbadge" id="drawer' + item.badge + '" style="display:none;"></span>' : '') +
+                    '</button>';
+        });
+        html += '<div class="mdrawer-foot">🏆 GESP赢家宝典 v9.2</div>';
+        drawerList.innerHTML = html;
+        drawerList.querySelectorAll('[data-goto]').forEach(el => {
+            el.addEventListener('click', function(){
+                switchPage(this.dataset.goto);
+                toggleDrawer(false);
+            });
+        });
+    }
+
+    /* ---------------- 2. 级别选择器同步 ---------------- */
+    const lvDesktop = document.getElementById('levelSelector');
+    const lvMobile  = document.getElementById('levelSelectorMobile');
+    if (lvDesktop && lvMobile) {
+        // 初始同步选项
+        lvMobile.innerHTML = lvDesktop.innerHTML;
+        lvMobile.value = lvDesktop.value;
+        // 桌面改动 → 同步手机
+        lvDesktop.addEventListener('change', () => { lvMobile.value = lvDesktop.value; });
+        // switchLevel() 里会设置 levelSelector，这里用 MutationObserver 兜底
+        new MutationObserver(() => { lvMobile.value = lvDesktop.value; })
+            .observe(lvDesktop, { attributes:true, attributeFilter:['value'] });
+        const _origSwitch = window.switchLevel;
+        if (typeof _origSwitch === 'function') {
+            window.switchLevel = function(v){
+                const r = _origSwitch.apply(this, arguments);
+                lvMobile.value = lvDesktop.value = v;
+                syncMobileChrome();
+                return r;
+            };
+        }
+    }
+
+    /* ---------------- 3. 顶部栏 / 底部Tab 状态同步 ---------------- */
+    const TAB_OF_PAGE = {
+        'page-overview':'page-overview','page-browse':'page-browse','page-learning':'page-browse',
+        'page-practice':'page-practice','page-ai':'page-practice','page-exam':'page-practice',
+        'page-progress':'page-progress',
+        'page-errors':'page-more','page-rank':'page-more','page-fav':'page-more',
+        'page-coding':'page-more','page-sync':'page-more','page-more':'page-more'
+    };
+    let currentPageId = 'page-overview';
+
+    function syncMobileChrome(){
+        // 顶部栏
+        const nameEl = document.getElementById('mtopName');
+        if (nameEl) nameEl.textContent = PAGE_TITLES[currentPageId] || 'GESP赢家宝典';
+        const lvEl = document.getElementById('mtopLevel');
+        if (lvEl && lvDesktop) lvEl.textContent = LV_SHORT(lvDesktop.value);
+        const moreLv = document.getElementById('moreLevelName');
+        if (moreLv && lvDesktop) moreLv.textContent = '当前：' + LV_SHORT(lvDesktop.value);
+
+        // 底部 Tab 高亮
+        const tabKey = TAB_OF_PAGE[currentPageId] || 'page-more';
+        document.querySelectorAll('.mtab-item').forEach(el => {
+            el.classList.toggle('active', el.dataset.tab === tabKey);
+        });
+        // 抽屉高亮
+        document.querySelectorAll('.mdrawer-item').forEach(el => {
+            el.classList.toggle('active', el.dataset.goto === currentPageId);
+        });
+        // 更多页的小红点：有错题或收藏未读时提示
+        syncMoreDot();
+    }
+
+    function syncMoreDot(){
+        const dot = document.getElementById('tabDot');
+        if (!dot) return;
+        let n = 0;
+        try {
+            if (typeof questions !== 'undefined' && Array.isArray(questions)) {
+                n += questions.filter(q => q && (q.wrongCount > 0 || q.isWrong)).length;
+            }
+        } catch(e){}
+        dot.style.display = n > 0 ? 'block' : 'none';
+    }
+
+    /* 劫持 switchPage：拦截后补充移动端联动 */
+    const _switchPage = window.switchPage;
+    if (typeof _switchPage === 'function') {
+        window.switchPage = function(id){
+            const r = _switchPage.apply(this, arguments);
+            currentPageId = id;
+            syncMobileChrome();
+            // 移动端弹层若开着，切页时收起
+            if (isMobile()) { toggleDrawer(false); }
+            return r;
+        };
+    }
+    // openSyncPage 也要同步
+    const _openSync = window.openSyncPage;
+    if (typeof _openSync === 'function') {
+        window.openSyncPage = function(){
+            const r = _openSync.apply(this, arguments);
+            currentPageId = 'page-sync';
+            syncMobileChrome();
+            return r;
+        };
+    }
+
+    /* 原始 nav 点击（桌面侧栏）也同步 */
+    if (typeof navItems !== 'undefined') {
+        navItems.forEach(li => li.addEventListener('click', function(){
+            if (this.dataset.page) { currentPageId = this.dataset.page; syncMobileChrome(); }
+        }));
+    }
+
+    /* 徽标数量同步到抽屉 */
+    function mirrorBadge(srcId, dstId){
+        const src = document.getElementById(srcId);
+        const dst = document.getElementById(dstId);
+        if (!src || !dst) return;
+        const sync = () => {
+            dst.style.display = getComputedStyle(src).display === 'none' ? 'none' : 'inline-block';
+            dst.textContent = src.textContent;
+        };
+        sync();
+        new MutationObserver(sync).observe(src, {childList:true, characterData:true, subtree:true, attributes:true});
+    }
+    mirrorBadge('learningBadge','drawerlearningBadge');
+    mirrorBadge('syncNavBadge','drawersyncNavBadge');
+
+    /* 初始不显示红点，等数据渲染后再判断 */
+    setTimeout(syncMobileChrome, 300);
+    setTimeout(syncMoreDot, 1200);
+
+    /* ---------------- 4. 抽屉开合 ---------------- */
+    window.toggleDrawer = function(open){
+        const d = document.getElementById('mdrawer');
+        const m = document.getElementById('drawerMask');
+        if (!d || !m) return;
+        if (open) {
+            d.classList.add('open'); m.classList.add('open');
+            document.body.style.overflow = 'hidden';
+            lvMobile && (lvMobile.value = lvDesktop ? lvDesktop.value : lvMobile.value);
+        } else {
+            d.classList.remove('open'); m.classList.remove('open');
+            document.body.style.overflow = '';
+        }
+    };
+
+    /* ---------------- 5. 底部 Sheet：级别选择 / 全部页面 ---------------- */
+    function openSheet(title, html, onMount){
+        const sheet = document.getElementById('msheet');
+        const mask  = document.getElementById('sheetMask');
+        document.getElementById('sheetTitle').textContent = title;
+        document.getElementById('sheetBody').innerHTML = html;
+        sheet.classList.add('open'); mask.classList.add('open');
+        document.body.style.overflow = 'hidden';
+        onMount && onMount();
+    }
+    window.closeSheet = function(){
+        const sheet = document.getElementById('msheet');
+        const mask  = document.getElementById('sheetMask');
+        if (!sheet) return;
+        sheet.classList.remove('open'); mask.classList.remove('open');
+        document.body.style.overflow = '';
+    };
+
+    window.openLevelPicker = function(){
+        const cur = lvDesktop ? lvDesktop.value : '';
+        let html = '';
+        LEVEL_GROUPS.forEach(g => {
+            html += '<div class="msheet-group">' + g.label + '</div>';
+            g.codes.forEach(code => {
+                html += '<button class="msheet-opt' + (code === cur ? ' active' : '') + '" data-lv="' + code + '">' +
+                        '<span>' + LV_SHORT(code) + '</span>' +
+                        (code === cur ? '<span class="chk">✓</span>' : '') + '</button>';
+            });
+        });
+        openSheet('选择练习级别', html, () => {
+            document.querySelectorAll('#sheetBody [data-lv]').forEach(el => {
+                el.addEventListener('click', function(){
+                    const code = this.dataset.lv;
+                    if (lvDesktop) lvDesktop.value = code;
+                    if (lvMobile) lvMobile.value = code;
+                    if (typeof switchLevel === 'function') switchLevel(code);
+                    syncMobileChrome();
+                    closeSheet();
+                });
+            });
+        });
+    };
+
+    window.openAllPages = function(){
+        const items = [];
+        document.querySelectorAll('.nav-list li').forEach(li => {
+            if (!li.dataset.page) return;
+            const icon = li.querySelector('.icon') ? li.querySelector('.icon').textContent.trim() : '•';
+            const text = li.textContent.replace(icon, '').trim();
+            items.push({id:li.dataset.page, icon, text});
+        });
+        let html = '<div class="msheet-group">全部页面</div>';
+        items.forEach(it => {
+            html += '<button class="msheet-opt' + (it.id === currentPageId ? ' active' : '') + '" data-goto="' + it.id + '">' +
+                    '<span>' + it.icon + ' ' + it.text + '</span>' +
+                    (it.id === currentPageId ? '<span class="chk">✓</span>' : '') + '</button>';
+        });
+        // 移动端专属的「更多」页也列出来
+        if (!items.some(i => i.id === 'page-more')) {
+            html = '<div class="msheet-group">工具</div>' +
+                   '<button class="msheet-opt" data-goto="page-more"><span>🧩 更多功能</span></button>' +
+                   html;
+        }
+        openSheet('全部页面', html, () => {
+            document.querySelectorAll('#sheetBody [data-goto]').forEach(el => {
+                el.addEventListener('click', function(){
+                    switchPage(this.dataset.goto);
+                    closeSheet();
+                });
+            });
+        });
+    };
+
+    /* ---------------- 6. 手势：抽屉左滑关闭 ---------------- */
+    const dr = document.getElementById('mdrawer');
+    if (dr) {
+        let sx = 0, sy = 0, tracking = false;
+        dr.addEventListener('touchstart', e => {
+            sx = e.touches[0].clientX; sy = e.touches[0].clientY; tracking = true;
+        }, {passive:true});
+        dr.addEventListener('touchmove', e => {
+            if (!tracking) return;
+            const dx = e.touches[0].clientX - sx;
+            const dy = Math.abs(e.touches[0].clientY - sy);
+            if (dx < -50 && dy < 50) { toggleDrawer(false); tracking = false; }
+        }, {passive:true});
+        dr.addEventListener('touchend', () => { tracking = false; }, {passive:true});
+    }
+
+    /* 手机端点系统返回/ESC 时优先收起浮层 */
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape') { toggleDrawer(false); closeSheet(); }
+    });
+
+    /* ---------------- 7. 屏幕方向 / 尺寸变化处理 ---------------- */
+    const onMqChange = () => {
+        if (!isMobile()) { toggleDrawer(false); closeSheet(); document.body.style.overflow=''; }
+        syncMobileChrome();
+    };
+    MQ.addEventListener ? MQ.addEventListener('change', onMqChange) : MQ.addListener(onMqChange);
+
+    window.__mobileChrome = { sync: syncMobileChrome, isMobile };
+})();
 </script>
 </body>
 </html>
