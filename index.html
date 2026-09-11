@@ -45,6 +45,8 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
 .nav-list li.active{background:#1e3a5f;color:#fff}
 .nav-list li .icon{font-size:16px;width:20px;text-align:center}
 .nav-list li .badge{margin-left:auto;background:#3b82f6;color:#fff;font-size:10px;padding:1px 7px;border-radius:10px;font-weight:600}
+.nav-list li .ext-arrow{margin-left:auto;font-size:11px;opacity:.55}
+.nav-list li:hover .ext-arrow{opacity:1}
 .sidebar-footer{padding:10px 14px 0;font-size:12px;border-top:1px solid rgba(255,255,255,.06);display:flex;flex-direction:column;gap:6px}
 .sidebar-footer .mode-selector{display:flex;align-items:center;gap:6px;font-size:11px;color:#7a8aa5}
 .sidebar-footer .mode-selector select{background:rgba(255,255,255,.08);color:#fff;border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:2px 6px;font-size:11px;flex:1;outline:none}
@@ -364,7 +366,7 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
 .resume-banner .info{font-size:13px;color:#92400e;font-weight:500}
 .resume-banner .btns{display:flex;gap:8px}
 @media(max-width:1024px){.grid-2,.grid-3{grid-template-columns:1fr 1fr}.stat-row{grid-template-columns:1fr 1fr}.sub-chapter-list{grid-template-columns:1fr}.custom-builder{grid-template-columns:1fr}.daily-goal-grid{grid-template-columns:1fr}.daily-goal-right{border-left:none;padding-left:0;border-top:2px solid #c7ddff;padding-top:16px}.type-stats-grid{grid-template-columns:1fr}}
-@media(max-width:768px){.sidebar{width:60px;padding:14px 6px}.sidebar .logo{font-size:0;padding:0 0 14px;text-align:center}.sidebar .logo .sub{font-size:10px}.level-selector{padding:8px 4px}.level-selector label{display:none}.level-selector select{font-size:10px;padding:4px 2px}.nav-list li{padding:8px 6px;justify-content:center;font-size:0}.nav-list li .icon{font-size:18px;width:auto}.sidebar-footer .mode-selector{display:none}.main{padding:14px;max-width:100%}.sync-actions{grid-template-columns:1fr}.sync-grid{grid-template-columns:1fr}.sync-btns .btn{flex:1 1 100%;justify-content:center}.grid-2,.grid-3{grid-template-columns:1fr}.stat-row{grid-template-columns:1fr 1fr}.overview-banner{flex-direction:column}.overview-banner .right{align-items:flex-start;text-align:left}.chapter-item .ch-name,.progress-chapter .name{width:140px}.exam-grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.oj-container{grid-template-columns:1fr}}
+@media(max-width:768px){.sidebar{width:60px;padding:14px 6px}.sidebar .logo{font-size:0;padding:0 0 14px;text-align:center}.sidebar .logo .sub{font-size:10px}.level-selector{padding:8px 4px}.level-selector label{display:none}.level-selector select{font-size:10px;padding:4px 2px}.nav-list li{padding:8px 6px;justify-content:center;font-size:0}.nav-list li .icon{font-size:18px;width:auto}.nav-list li .ext-arrow{display:none}.sidebar-footer .mode-selector{display:none}.main{padding:14px;max-width:100%}.sync-actions{grid-template-columns:1fr}.sync-grid{grid-template-columns:1fr}.sync-btns .btn{flex:1 1 100%;justify-content:center}.grid-2,.grid-3{grid-template-columns:1fr}.stat-row{grid-template-columns:1fr 1fr}.overview-banner{flex-direction:column}.overview-banner .right{align-items:flex-start;text-align:left}.chapter-item .ch-name,.progress-chapter .name{width:140px}.exam-grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.oj-container{grid-template-columns:1fr}}
 @media(max-width:480px){.exam-grid{grid-template-columns:1fr}.stat-row{grid-template-columns:1fr}.chapter-item .ch-name,.progress-chapter .name{width:100%}}
 </style>
 </head>
@@ -400,6 +402,7 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
         <li data-page="page-progress"><span class="icon">📈</span> 我的进度</li>
         <li data-page="page-rank"><span class="icon">🏆</span> 排行榜</li>
         <li data-page="page-fav"><span class="icon">⭐</span> 我的收藏</li>
+        <li class="external" data-external="https://howtoprogram.cn/" title="他山之石 · howtoprogram.cn"><span class="icon">🌐</span> 他山之石<span class="ext-arrow">↗</span></li>
         <li data-page="page-sync"><span class="icon">☁️</span> 云同步<span class="badge" id="syncNavBadge" style="display:none;">!</span></li>
     </ul>
     <div class="sidebar-footer">
@@ -2715,7 +2718,10 @@ function switchPage(id) {
     navItems.forEach(li => { li.classList.remove('active'); if (li.dataset.page === id) li.classList.add('active'); });
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-navItems.forEach(li => li.addEventListener('click', function() { if (this.dataset.page) switchPage(this.dataset.page); }));
+navItems.forEach(li => li.addEventListener('click', function() {
+    if (this.dataset.external) { window.open(this.dataset.external, '_blank', 'noopener'); return; }
+    if (this.dataset.page) switchPage(this.dataset.page);
+}));
 
 let declarationText = userConfig.declaration || '💪 每天进步一点点，GESP必过！';
 function renderDeclaration() {
