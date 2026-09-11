@@ -385,9 +385,8 @@ body.nav-open{overflow:hidden}
 .hm-label:hover .tooltip{display:block}
 .hm-label.hm-head{color:#64748b;font-weight:700;font-size:10px}
 .hm-label.hm-rowhead{color:#334155;justify-content:flex-start;padding-left:6px}
-.hm-cell.hm-sum{box-shadow:inset 0 0 0 2px rgba(11,26,51,.35)}
-.heatmap-grid{--hm-row-w:78px;--hm-sum-w:58px;overflow-x:auto}
-@media(max-width:768px){.heatmap-grid{--hm-row-w:54px;--hm-sum-w:46px}.hm-label{font-size:10px;padding:3px}.hm-cell{font-size:10px;min-height:26px;padding:4px 2px}}
+.heatmap-grid{--hm-row-w:78px;overflow-x:auto}
+@media(max-width:768px){.heatmap-grid{--hm-row-w:54px}.hm-label{font-size:10px;padding:3px}.hm-cell{font-size:10px;min-height:26px;padding:4px 2px}}
 </style>
 </head>
 <body>
@@ -539,7 +538,7 @@ body.nav-open{overflow:hidden}
                 <button class="tab-btn" data-heatmap="knowledge">🧠 知识点</button>
             </div>
             <div id="heatmap-type" class="heatmap-view">
-                <div id="typeHeatmapGrid" class="heatmap-grid" style="grid-template-columns:var(--hm-row-w) repeat(4,minmax(38px,1fr)) var(--hm-sum-w);"></div>
+                <div id="typeHeatmapGrid" class="heatmap-grid" style="grid-template-columns:var(--hm-row-w) repeat(4,minmax(38px,1fr));"></div>
                 <div class="heatmap-legend"><span style="font-weight:500;">图例：</span><span><span class="legend-color high"></span>高(≥70%)</span><span><span class="legend-color medium"></span>中(40%-70%)</span><span><span class="legend-color low"></span>低(&lt;40%)</span><span><span class="legend-color na"></span>未练习</span></div>
             </div>
             <div id="heatmap-chapter" class="heatmap-view" style="display:none;">
@@ -1369,35 +1368,20 @@ function renderTypeHeatmap() {
     const types = getTypes();
     if (chapters.length === 0) { grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:#5e6f8d;">暂无数据</div>'; return; }
 
-    /* 列数按实际章节数生成：行标题列 + N 个章节列 + 汇总列 */
-    grid.style.gridTemplateColumns = 'var(--hm-row-w) repeat(' + chapters.length + ', minmax(38px,1fr)) var(--hm-sum-w)';
+    /* 列数按实际章节数生成：行标题列 + N 个章节列 */
+    grid.style.gridTemplateColumns = 'var(--hm-row-w) repeat(' + chapters.length + ', minmax(38px,1fr))';
 
-    /* 表头行：角标 + 横轴（章节，短标签 + 悬浮全名）+ 汇总列 */
+    /* 表头行：角标 + 横轴（章节，短标签 + 悬浮全名） */
     grid.appendChild(makeHmLabel('题型＼章节', 'hm-head', '纵轴＝题型，横轴＝章节'));
     chapters.forEach(ch => grid.appendChild(makeHmLabel(chapterShort(ch), 'hm-head', ch)));
-    grid.appendChild(makeHmLabel('本题型综合', 'hm-head', '该题型跨全部章节的正确率'));
 
-    /* 数据行：纵轴（题型）+ 交叉单元格 + 行汇总 */
+    /* 数据行：纵轴（题型）+ 交叉单元格 */
     types.forEach(type => {
         grid.appendChild(makeHmLabel(type, 'hm-rowhead'));
         chapters.forEach(ch => {
             grid.appendChild(makeHmCell(hmStat(questions.filter(q => q.type === type && q.chapter === ch)), ch + ' · ' + type));
         });
-        const tc = makeHmCell(hmStat(questions.filter(q => q.type === type)), type + ' · 全部章节');
-        tc.classList.add('hm-sum');
-        grid.appendChild(tc);
     });
-
-    /* 汇总行：每章综合 + 总体正确率 */
-    grid.appendChild(makeHmLabel('本章综合', 'hm-head', '该章节跨全部题型的正确率'));
-    chapters.forEach(ch => {
-        const cc = makeHmCell(hmStat(getQuestionsByChapter(ch)), ch + ' · 全部题型');
-        cc.classList.add('hm-sum');
-        grid.appendChild(cc);
-    });
-    const oc = makeHmCell(hmStat(questions), '全部题目综合正确率');
-    oc.classList.add('hm-sum');
-    grid.appendChild(oc);
 }
 
 function renderChapterHeat() {
