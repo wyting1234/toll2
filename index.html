@@ -378,6 +378,16 @@ body.nav-open{overflow:hidden}
 @media(max-width:1024px){.grid-2,.grid-3{grid-template-columns:1fr 1fr}.stat-row{grid-template-columns:1fr 1fr}.sub-chapter-list{grid-template-columns:1fr}.custom-builder{grid-template-columns:1fr}.daily-goal-grid{grid-template-columns:1fr}.daily-goal-right{border-left:none;padding-left:0;border-top:2px solid #c7ddff;padding-top:16px}.type-stats-grid{grid-template-columns:1fr}}
 @media(max-width:768px){.main{padding:60px 14px 40px;max-width:100%}.sync-actions{grid-template-columns:1fr}.sync-grid{grid-template-columns:1fr}.sync-btns .btn{flex:1 1 100%;justify-content:center}.grid-2,.grid-3{grid-template-columns:1fr}.stat-row{grid-template-columns:1fr 1fr}.overview-banner{flex-direction:column}.overview-banner .right{align-items:flex-start;text-align:left}.chapter-item .ch-name,.progress-chapter .name{width:140px}.exam-grid{grid-template-columns:1fr 1fr}.form-grid{grid-template-columns:1fr}.oj-container{grid-template-columns:1fr}}
 @media(max-width:480px){.exam-grid{grid-template-columns:1fr}.stat-row{grid-template-columns:1fr}.chapter-item .ch-name,.progress-chapter .name{width:100%}}
+
+/* ---- 热力图坐标轴优化 ---- */
+.hm-label{position:relative;cursor:default}
+.hm-label .tooltip{display:none;position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#0b1a33;color:#fff;padding:4px 8px;border-radius:5px;font-size:10px;white-space:nowrap;z-index:30;pointer-events:none}
+.hm-label:hover .tooltip{display:block}
+.hm-label.hm-head{color:#64748b;font-weight:700;font-size:10px}
+.hm-label.hm-rowhead{color:#334155;justify-content:flex-start;padding-left:6px}
+.hm-cell.hm-sum{box-shadow:inset 0 0 0 2px rgba(11,26,51,.35)}
+.heatmap-grid{--hm-row-w:78px;--hm-sum-w:58px;overflow-x:auto}
+@media(max-width:768px){.heatmap-grid{--hm-row-w:54px;--hm-sum-w:46px}.hm-label{font-size:10px;padding:3px}.hm-cell{font-size:10px;min-height:26px;padding:4px 2px}}
 </style>
 </head>
 <body>
@@ -529,7 +539,7 @@ body.nav-open{overflow:hidden}
                 <button class="tab-btn" data-heatmap="knowledge">🧠 知识点</button>
             </div>
             <div id="heatmap-type" class="heatmap-view">
-                <div id="typeHeatmapGrid" class="heatmap-grid" style="grid-template-columns:80px repeat(7,1fr);"></div>
+                <div id="typeHeatmapGrid" class="heatmap-grid" style="grid-template-columns:var(--hm-row-w) repeat(4,minmax(38px,1fr)) var(--hm-sum-w);"></div>
                 <div class="heatmap-legend"><span style="font-weight:500;">图例：</span><span><span class="legend-color high"></span>高(≥70%)</span><span><span class="legend-color medium"></span>中(40%-70%)</span><span><span class="legend-color low"></span>低(&lt;40%)</span><span><span class="legend-color na"></span>未练习</span></div>
             </div>
             <div id="heatmap-chapter" class="heatmap-view" style="display:none;">
@@ -1323,34 +1333,84 @@ function renderOverview() {
     }
 }
 
+/* --- 热力图坐标轴：章号解析 / 短标签 / 工具函数 --- */
+function chapterNum(name) {
+    const m = String(name || '').match(/第\s*(\d+)\s*章/);
+    return m ? parseInt(m[1], 10) : 9999;
+}
+function chapterShort(name) {
+    const m = String(name || '').match(/第\s*(\d+)\s*章/);
+    return m ? ('第' + m[1] + '章') : String(name || '');
+}
+function makeHmLabel(text, cls, tip) {
+    const el = document.createElement('div');
+    el.className = 'hm-label' + (cls ? ' ' + cls : '');
+    el.textContent = text;
+    if (tip) { const t = document.createElement('span'); t.className = 'tooltip'; t.textContent = tip; el.appendChild(t); }
+    return el;
+}
+function makeHmCell(stat, tip) {
+    const has = stat.pct !== null;
+    const cell = document.createElement('div');
+    cell.className = 'hm-cell ' + (has ? (stat.pct >= 70 ? 'high' : stat.pct >= 40 ? 'medium' : 'low') : 'na');
+    cell.innerHTML = (has ? stat.pct + '%' : '—') + (tip ? '<span class="tooltip">' + escapeHtml(tip) + '</span>' : '');
+    return cell;
+}
+/* 正确率统计：返回 {pct:null} 表示「无作答数据」，{pct:0} 表示「答过但全错」 */
+function hmStat(list) {
+    const d = list.filter(q => q._done);
+    if (d.length === 0) return { pct: null };
+    return { pct: Math.round(d.filter(q => q._lastCorrect === true).length / d.length * 100) };
+}
 function renderTypeHeatmap() {
     const grid = document.getElementById('typeHeatmapGrid');
     grid.innerHTML = '';
-    const chapters = getChapters(), types = getTypes();
+    const chapters = getChapters().slice().sort((a, b) => chapterNum(a) - chapterNum(b));
+    const types = getTypes();
     if (chapters.length === 0) { grid.innerHTML = '<div style="grid-column:1/-1;padding:30px;text-align:center;color:#5e6f8d;">暂无数据</div>'; return; }
-    const h = document.createElement('div'); h.className = 'hm-label'; h.textContent = '题型\\章节'; grid.appendChild(h);
-    chapters.forEach(ch => { const c = document.createElement('div'); c.className = 'hm-label'; c.textContent = ch.replace('第','').replace('章',''); grid.appendChild(c); });
+
+    /* 列数按实际章节数生成：行标题列 + N 个章节列 + 汇总列 */
+    grid.style.gridTemplateColumns = 'var(--hm-row-w) repeat(' + chapters.length + ', minmax(38px,1fr)) var(--hm-sum-w)';
+
+    /* 表头行：角标 + 横轴（章节，短标签 + 悬浮全名）+ 汇总列 */
+    grid.appendChild(makeHmLabel('题型＼章节', 'hm-head', '纵轴＝题型，横轴＝章节'));
+    chapters.forEach(ch => grid.appendChild(makeHmLabel(chapterShort(ch), 'hm-head', ch)));
+    grid.appendChild(makeHmLabel('本题型综合', 'hm-head', '该题型跨全部章节的正确率'));
+
+    /* 数据行：纵轴（题型）+ 交叉单元格 + 行汇总 */
     types.forEach(type => {
-        const lc = document.createElement('div'); lc.className = 'hm-label'; lc.textContent = type; grid.appendChild(lc);
+        grid.appendChild(makeHmLabel(type, 'hm-rowhead'));
         chapters.forEach(ch => {
-            const pct = getTypeAccuracyByChapter(type, ch);
-            const cell = document.createElement('div');
-            cell.className = `hm-cell ${getPctClass(pct)}`;
-            cell.innerHTML = `${pct > 0 ? pct + '%' : '—'} <span class="tooltip">${escapeHtml(ch)} · ${escapeHtml(type)}</span>`;
-            grid.appendChild(cell);
+            grid.appendChild(makeHmCell(hmStat(questions.filter(q => q.type === type && q.chapter === ch)), ch + ' · ' + type));
         });
+        const tc = makeHmCell(hmStat(questions.filter(q => q.type === type)), type + ' · 全部章节');
+        tc.classList.add('hm-sum');
+        grid.appendChild(tc);
     });
+
+    /* 汇总行：每章综合 + 总体正确率 */
+    grid.appendChild(makeHmLabel('本章综合', 'hm-head', '该章节跨全部题型的正确率'));
+    chapters.forEach(ch => {
+        const cc = makeHmCell(hmStat(getQuestionsByChapter(ch)), ch + ' · 全部题型');
+        cc.classList.add('hm-sum');
+        grid.appendChild(cc);
+    });
+    const oc = makeHmCell(hmStat(questions), '全部题目综合正确率');
+    oc.classList.add('hm-sum');
+    grid.appendChild(oc);
 }
 
 function renderChapterHeat() {
     const c = document.getElementById('chapterHeatContainer');
     c.innerHTML = '';
     getChapters().forEach(ch => {
-        const pct = getChapterAccuracy(ch);
+        const st = hmStat(getQuestionsByChapter(ch));
+        const has = st.pct !== null;
+        const cls = has ? (st.pct >= 70 ? 'high' : st.pct >= 40 ? 'medium' : 'low') : 'na';
         const row = document.createElement('div'); row.className = 'chapter-heat-row';
-        row.innerHTML = `<div class="ch-label">${escapeHtml(ch)}</div>
-            <div class="ch-bar-wrap"><div class="ch-fill ${getPctClass(pct)}" style="width:${pct}%"></div></div>
-            <div class="ch-pct">${getPctLabel(pct)}</div>`;
+        row.innerHTML = '<div class="ch-label">' + escapeHtml(ch) + '</div>'
+            + '<div class="ch-bar-wrap"><div class="ch-fill ' + cls + '" style="width:' + (has ? st.pct : 0) + '%"></div></div>'
+            + '<div class="ch-pct">' + (has ? st.pct + '%' : '—') + '</div>';
         c.appendChild(row);
     });
 }
@@ -1361,10 +1421,11 @@ function renderKnowledgeHeat() {
     getChapters().forEach(ch => {
         const gl = document.createElement('div'); gl.className = 'kp-group-label'; gl.textContent = ch; grid.appendChild(gl);
         (getKnowledgeByChapter()[ch] || []).forEach(kn => {
-            const pct = getKnowledgeAccuracy(kn);
+            const st = hmStat(getQuestionsByKnowledge(kn));
+            const has = st.pct !== null;
             const cell = document.createElement('div');
-            cell.className = `kp-cell ${getPctClass(pct)}`;
-            cell.innerHTML = `<span class="kp-name">${escapeHtml(kn)}</span><span class="kp-pct">${getPctLabel(pct)}</span>`;
+            cell.className = 'kp-cell ' + (has ? (st.pct >= 70 ? 'high' : st.pct >= 40 ? 'medium' : 'low') : 'na');
+            cell.innerHTML = '<span class="kp-name">' + escapeHtml(kn) + '</span><span class="kp-pct">' + (has ? st.pct + '%' : '—') + '</span>';
             grid.appendChild(cell);
         });
     });
