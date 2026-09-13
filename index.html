@@ -409,6 +409,7 @@ body.nav-open{overflow:hidden}
                 <option value="python1">Python 一级</option><option value="python2">Python 二级</option>
                 <option value="python3">Python 三级</option><option value="python4">Python 四级</option>
                 <option value="python5">Python 五级</option><option value="python6">Python 六级</option>
+                <option value="python7">Python 七级</option><option value="python8">Python 八级</option>
             </optgroup>
         </select>
     </div>
@@ -949,7 +950,7 @@ body.nav-open{overflow:hidden}
    ================================================================ */
 const LEVEL_NAMES = {
     cpp1:'C++ 一级',cpp2:'C++ 二级',cpp3:'C++ 三级',cpp4:'C++ 四级',cpp5:'C++ 五级',cpp6:'C++ 六级',cpp7:'C++ 七级',cpp8:'C++ 八级',
-    python1:'Python 一级',python2:'Python 二级',python3:'Python 三级',python4:'Python 四级',python5:'Python 五级',python6:'Python 六级'
+    python1:'Python 一级',python2:'Python 二级',python3:'Python 三级',python4:'Python 四级',python5:'Python 五级',python6:'Python 六级',python7:'Python 七级',python8:'Python 八级'
 };
 const LEVEL_KEYS = Object.keys(LEVEL_NAMES);
 const STORAGE_KEY = 'gesp_data_v9';
@@ -2545,7 +2546,8 @@ function normalizeLevel(str) {
         'cpp1':'cpp1','cpp2':'cpp2','cpp3':'cpp3','cpp4':'cpp4','cpp5':'cpp5','cpp6':'cpp6','cpp7':'cpp7','cpp8':'cpp8',
         'python一级':'python1','python二级':'python2','python三级':'python3',
         'python四级':'python4','python五级':'python5','python六级':'python6',
-        'python1':'python1','python2':'python2','python3':'python3','python4':'python4','python5':'python5','python6':'python6'
+        'python七级':'python7','python八级':'python8',
+        'python1':'python1','python2':'python2','python3':'python3','python4':'python4','python5':'python5','python6':'python6','python7':'python7','python8':'python8'
     };
     return map[s] || null;
 }
