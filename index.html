@@ -5120,6 +5120,10 @@ function applyProgressFlags(target, src) {
 }
 function applyContentFields(target, src) {
     CONTENT_KEYS.forEach(k => { if (src && src[k] !== undefined) target[k] = src[k]; });
+    /* 内容被外部数据覆盖 -> 打脏标：序列化时必须重算指纹，
+       否则这份内容会在下次加载时被内置题库覆盖回去。
+       此标记只存在于内存，不入 PROGRESS_KEYS，加载时由本函数重新派生。 */
+    target._contentDirty = true;
 }
 
 /* 以内置题库为骨架，叠加存量数据：
@@ -5156,7 +5160,11 @@ function stripForStore(levelKey, qs) {
     const fp = BUILTIN_FP[levelKey] || {};
     return (qs || []).map(q => {
         if (!q || !idx[q.id]) return q;                    /* 自建 / 导入的题 */
-        if (contentFingerprint(q) !== fp[q.id]) return q;  /* 内容被改过，必须整条保存 */
+        /* 只有「可能被改过」的题才重算指纹：
+           _editedAt 由编辑表单写入；_contentDirty 由 applyContentFields 写入。
+           两者皆空 = 内容必然等于内置原值，跳过哈希。这是性能关键：全库 4000+ 题，
+           每次保存都重算会让答题明显卡顿。 */
+        if ((q._editedAt || q._contentDirty) && contentFingerprint(q) !== fp[q.id]) return q;
         const o = { id: q.id };
         PROGRESS_KEYS.forEach(k => {
             const v = q[k];
