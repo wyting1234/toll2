@@ -6095,10 +6095,14 @@ function handleLearningImport(event) {
    ================================================================ */
 function exportAllData() {
     const data = {
-        version:'9.1',
+        version:'9.2',
         exportedAt: new Date().toISOString(),
         currentLevel,
         userConfig,
+        // practice：各级别的练习进度（PRACTICE_KEY_<level>）。
+        // 原实现漏了它，导致「完整备份」导出的文件里没有练习进度，
+        // 换设备恢复后进度静默清零。云同步的 buildSnapshot() 一直是带的，此处对齐。
+        practice: getLocalPracticeAll(),
         levels:{}
     };
     LEVEL_KEYS.forEach(k => {
@@ -6142,6 +6146,18 @@ function importAllData(event) {
                 });
                 saveUserConfig();
             }
+            // 恢复练习进度。旧备份（version < 9.2）没有 practice 字段，
+            // 此时 data.practice 为 undefined，跳过即可 —— 向后兼容，
+            // 不会把用户已有的进度误清空（不删任何键，只覆盖备份里有的）。
+            let practiceRestored = 0;
+            if (data.practice && typeof data.practice === 'object') {
+                Object.keys(data.practice).forEach(k => {
+                    try {
+                        localStorage.setItem(PRACTICE_KEY + '_' + k, JSON.stringify(data.practice[k]));
+                        practiceRestored++;
+                    } catch (e) { /* 忽略单项 */ }
+                });
+            }
             if (data.currentLevel && LEVEL_NAMES[data.currentLevel]) {
                 currentLevel = data.currentLevel;
                 document.getElementById('levelSelector').value = currentLevel;
@@ -6151,7 +6167,8 @@ function importAllData(event) {
             saveToLocal();
             renderAll();
             updateCountdown();
-            showToast(`✅ 恢复成功！共 ${count} 道题`, 'success');
+            showToast(`✅ 恢复成功！共 ${count} 道题` +
+                       (practiceRestored ? `、${practiceRestored} 份练习进度` : ''), 'success');
         } catch (err) { showToast('❌ 恢复失败：' + err.message, 'error'); }
     };
     reader.readAsText(file);
