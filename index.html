@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- build: 2026-09-15e (gitee owner autofix | 422 idempotent | 5 sync ops | bankfill 491q) -->
+<!-- build: 2026-09-15f (gitee owner normalize | 422 idempotent | 5 sync ops | bankfill 491q) -->
 <title>GESP赢家宝典 · v9.1 · 学习统计版</title>
 <script>/* SheetJS xlsx 0.18.5 (Apache-2.0) 内嵌版本，消除 CDN 依赖 */
 /*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
@@ -834,7 +834,7 @@ body.nav-open{overflow:hidden}
                 </div>
                 <div class="sync-grid">
                     <div class="sync-field">
-                        <label>Gitee 用户名 <span class="hint">可留空：自动使用令牌所属账号，填错也会自动纠正</span></label>
+                        <label>Gitee 用户名 <span class="hint">可留空 · 留空最省事；粘 gitee.com/xxx 整串或填昵称都能自动认出</span></label>
                         <input type="text" id="giteeOwner" placeholder="可留空（自动识别）" autocomplete="off" spellcheck="false">
                     </div>
                     <div class="sync-field">
@@ -7712,6 +7712,9 @@ function syncLoadConfig() {
         if (raw) syncConfig = { ...syncConfig, ...JSON.parse(raw) };
     } catch (e) { /* 忽略损坏配置 */ }
     if (typeof syncConfig.token !== 'string') syncConfig.token = '';
+    /* 历史配置里可能已经存着整串主页地址：加载时就收敛，否则 renderSync 会把
+       那个 URL 原样写回输入框，看起来像「修了没用」。 */
+    syncConfig.giteeOwner = normalizeGiteeOwner(syncConfig.giteeOwner);
 }
 function syncSaveConfigStore() {
     try { localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(syncConfig)); }
@@ -7846,6 +7849,26 @@ function cloudToken() {
 function cloudApiBase() {
     return cloudProvider() === 'gitee' ? 'https://gitee.com/api/v5' : 'https://api.github.com';
 }
+/* 把用户在「Gitee 用户名」栏里可能粘进来的各种写法，统一收敛成空间地址。
+   用户实测反馈：直接把个人主页地址 https://gitee.com/wyting1234 整串粘了进来
+   —— 因为该栏提示语原本就写着「即 gitee.com/你的名字」，措辞本身在诱导填 URL。
+   不剥掉协议和域名的话，会拼出
+     /repos/https://gitee.com/wyting1234/gesp-sync-data
+   这种请求：白跑一次，且报错内容和实际原因完全对不上。
+   顺手兼容 @wyting1234、尾部斜杠、以及粘成仓库地址（取首段作 owner）。 */
+function normalizeGiteeOwner(v) {
+    let t = String(v === undefined || v === null ? '' : v).trim();
+    if (!t) return '';
+    t = t.replace(/^https?:\/\//i, '').replace(/^@+/, '');
+    t = t.replace(/[?#].*$/, '').replace(/\/+$/, '');
+    const seg = t.split('/').filter(function (x) { return x; });
+    /* 首段带点号视作域名（gitee.com / www.gitee.com / 其它站），丢掉 */
+    if (seg.length > 1 && /\./.test(seg[0])) seg.shift();
+    t = seg.length ? seg[0] : '';
+    t = t.replace(/^www\./i, '');
+    if (/^(www\.)?gitee\.com$/i.test(t)) return '';
+    return t;
+}
 function cloudContentsUrl(fileName) {
     return cloudApiBase() + '/repos/' + syncRemote.full + '/contents/' + fileName;
 }
@@ -7933,13 +7956,22 @@ async function cloudWriteFile(fileName, body, sha) {
 /* 只探测仓库是否存在，不创建（自动检查用，避免误建仓库） */
 async function cloudProbeRepo() {
     if (cloudProvider() === 'gitee') {
-        const owner = (syncConfig.giteeOwner || '').trim();
+        const owner = normalizeGiteeOwner(syncConfig.giteeOwner);
         const repo = (syncConfig.giteeRepo || '').trim() || 'gesp-sync-data';
-        if (!owner) return null;
+        /* 身份需要时就地取一次。用户名已改成可留空，且自动检查发生在「连接」之前，
+           那时 syncAccountLogin 往往是空的 —— 不补这一步会误报「云端暂无数据」。 */
+        if (!syncAccountLogin) {
+            try {
+                const me = await cloudFetch('GET', cloudApiBase() + '/user');
+                syncAccountLogin = (me && (me.login || me.username)) || '';
+            } catch (e) { /* 取不到身份就只按填写的 owner 探，交给下面的 404 处理 */ }
+        }
+        if (!owner && !syncAccountLogin) return null;
         /* 与 syncEnsureRepoGitee 同源：填写的 owner 与令牌账号不一致时，
            也要能按真实 login 探到，否则「连接测试」和「保存并连接」结论会打架。 */
-        const owners = [owner];
-        if (syncAccountLogin && syncAccountLogin.toLowerCase() !== owner.toLowerCase()) owners.push(syncAccountLogin);
+        const owners = [];
+        if (owner) owners.push(owner);
+        if (syncAccountLogin && (!owner || syncAccountLogin.toLowerCase() !== owner.toLowerCase())) owners.push(syncAccountLogin);
         for (let i = 0; i < owners.length; i++) {
             try {
                 const info = await cloudFetch('GET', cloudApiBase() + '/repos/' + owners[i] + '/' + repo);
@@ -8042,7 +8074,7 @@ async function syncEnsureRepo() {
    空间地址，免得猜错就往别人名下建仓库。 */
 async function syncEnsureRepoGitee() {
     const repo = (syncConfig.giteeRepo || '').trim() || 'gesp-sync-data';
-    const owner = (syncConfig.giteeOwner || '').trim();
+    const owner = normalizeGiteeOwner(syncConfig.giteeOwner);
 
     /* 先确定令牌真实账号。用户名这一栏留空也照样能用 ——
        Gitee 只有 POST /user/repos 这一个建仓入口，仓库一定建在「令牌所属账号」
@@ -8106,7 +8138,7 @@ async function syncEnsureRepoGitee() {
             const who = login ? '令牌实际属于账号「' + login + '」' : '未能取到令牌所属账号';
             throw new Error(
                 '仓库 ' + (owner || login) + '/' + repo + ' 读不到，但换个名字建仓又提示已存在。' + who + '。请检查：' +
-                '①「用户名」要填 Gitee 的个人空间地址（个人主页网址 gitee.com/ 后面那一段），不是昵称；' +
+                '①「用户名」留空最省事（填错也会自动纠正）；要填就填 Gitee 个人空间地址（gitee.com/xxx 里 xxxx 那一段），别填昵称；' +
                 '② 令牌要勾选 projects 权限'
             );
         }
@@ -8115,12 +8147,16 @@ async function syncEnsureRepoGitee() {
     }
 
     syncRemote = { owner: hit, repo: repo, full: hit + '/' + repo, branch: (info && info.default_branch) || 'master' };
-    /* owner 被自动纠正过：把配置和输入框一起改成对的，否则下次连接又从表单读回错值 */
-    if (hit && hit !== owner) {
+    /* 配置与输入框都统一成「实际生效」的 owner。
+       原实现只在 hit !== owner 时才回写，而 syncReadForm 已经先把
+       「https://gitee.com/wyting1234」收敛成了 wyting1234（此时 owner === hit），
+       于是输入框仍显示用户粘进来的整串地址 —— 看起来像「改了没生效」。
+       无条件回写就不会有这种「配置对了、界面没对」的错位。 */
+    if (hit) {
         syncConfig.giteeOwner = hit;
-        try { syncSaveConfigStore(); } catch (e) {}
+        try { syncSaveConfigStore(); } catch (e) { /* 忽略存储配额错误 */ }
         const inp = document.getElementById('giteeOwner');
-        if (inp) inp.value = hit;
+        if (inp && inp.value !== hit) inp.value = hit;
     }
     return syncRemote;
 }
@@ -8450,7 +8486,7 @@ function syncReadForm() {
     syncConfig.token = (document.getElementById('syncToken').value || '').trim();
     syncConfig.repo = (document.getElementById('syncRepo').value || '').trim() || 'gesp-sync-data';
     syncConfig.giteeToken = (document.getElementById('giteeToken').value || '').trim();
-    syncConfig.giteeOwner = (document.getElementById('giteeOwner').value || '').trim();
+    syncConfig.giteeOwner = normalizeGiteeOwner(document.getElementById('giteeOwner').value);
     syncConfig.giteeRepo = (document.getElementById('giteeRepo').value || '').trim() || 'gesp-sync-data';
     syncConfig.space = (document.getElementById('syncFile').value || '').trim() || 'default';
     syncConfig.autoCheck = !!document.getElementById('syncAutoCheck').checked;
@@ -8477,6 +8513,8 @@ function syncPickProvider(p) {
         syncRemote = null;
         syncConfig.cloudSavedAt = 0;
         syncConfig.cloudSha = '';
+        /* 两家账号互不相通：不清掉会把 GitHub 的 login 当成 Gitee 的候选 owner */
+        syncAccountLogin = '';
     }
     syncSaveConfigStore();
     syncToggleProvider();
