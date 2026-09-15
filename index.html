@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- build: 2026-09-15c (bankfill cpp1+2 = 491q | github+gitee sync) -->
+<!-- build: 2026-09-15d (5 sync ops | bankfill 491q | github+gitee) -->
 <title>GESP赢家宝典 · v9.1 · 学习统计版</title>
 <script>/* SheetJS xlsx 0.18.5 (Apache-2.0) 内嵌版本，消除 CDN 依赖 */
 /*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
@@ -83,8 +83,8 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
 .sync-provider label .hint{font-weight:400;color:#8b9bb4}
 .sync-provider input{width:15px!important;height:15px;margin:0;cursor:pointer;accent-color:#3b82f6;flex:none}
 .sync-btns{display:flex;gap:10px;flex-wrap:wrap}
-.sync-actions{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
-.sync-action{padding:16px 14px;border-radius:12px;border:1px solid #e2e9f2;background:#fff;cursor:pointer;text-align:center;transition:.15s;font-family:inherit}
+.sync-actions{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+.sync-action{position:relative;padding:16px 12px;border-radius:12px;border:1px solid #e2e9f2;background:#fff;cursor:pointer;text-align:center;transition:.15s;font-family:inherit}
 .sync-action:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 18px rgba(30,58,95,.1);border-color:#c7d7ee}
 .sync-action:disabled{opacity:.45;cursor:not-allowed}
 .sync-action .ico{font-size:24px;display:block;margin-bottom:6px}
@@ -93,6 +93,11 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
 .sync-action.upload .name{color:#0369a1}
 .sync-action.merge .name{color:#047857}
 .sync-action.overwrite .name{color:#b45309}
+/* 默认操作（双向同步）高亮：让「打开就能点、点了就对」这件事在视觉上成立 */
+.sync-action.is-default{border-color:#9ec5f5;background:linear-gradient(180deg,#f7fbff,#fff);box-shadow:0 2px 10px rgba(59,130,246,.12)}
+.sync-action.is-default:hover:not(:disabled){border-color:#6aa9ee}
+.sync-action .def-badge{position:absolute;top:7px;right:7px;font-size:10px;line-height:1;font-weight:700;color:#fff;background:#3b82f6;border-radius:999px;padding:3px 7px}
+@media(max-width:1120px){.sync-actions{grid-template-columns:repeat(3,1fr)}}
 .sync-log{max-height:220px;overflow-y:auto;background:#0b1a33;border-radius:10px;padding:12px 14px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11.5px;line-height:1.75;color:#b0c4de}
 .sync-log .ln{display:block;white-space:pre-wrap;word-break:break-all}
 .sync-log .ln.ok{color:#6ee7b7}
@@ -860,21 +865,30 @@ body.nav-open{overflow:hidden}
         <div class="card">
             <div class="card-header"><h3>同步操作</h3><span class="tag" id="syncOpHint">先保存配置并连接</span></div>
             <div class="sync-actions">
-                <button class="sync-action upload" id="syncBtnUpload" onclick="syncUpload()" disabled>
+                <button class="sync-action upload is-default" id="syncBtnUpload" onclick="syncUpload('both')" disabled>
+                    <span class="def-badge">默认</span>
                     <span class="ico">🔄</span><span class="name">双向同步</span>
-                    <span class="desc">本机与云端合并后<br>两边同时更新（推荐）</span>
+                    <span class="desc">合并后两端都写<br>推荐日常使用</span>
                 </button>
                 <button class="sync-action merge" id="syncBtnMerge" onclick="syncDownload('merge')" disabled>
                     <span class="ico">🔀</span><span class="name">下载并合并</span>
-                    <span class="desc">云端与本机取并集<br>双方进度都不丢（推荐）</span>
+                    <span class="desc">取并集<br>只更新本机</span>
                 </button>
                 <button class="sync-action overwrite" id="syncBtnOverwrite" onclick="syncDownload('overwrite')" disabled>
                     <span class="ico">⬇️</span><span class="name">下载并覆盖</span>
-                    <span class="desc">完全丢弃本机数据<br>以云端为准</span>
+                    <span class="desc">丢弃本机数据<br>以云端为准</span>
+                </button>
+                <button class="sync-action merge" id="syncBtnUpMerge" onclick="syncUpload('merge')" disabled>
+                    <span class="ico">📤</span><span class="name">上传并合并</span>
+                    <span class="desc">取并集<br>只更新云端</span>
+                </button>
+                <button class="sync-action overwrite" id="syncBtnUpOverwrite" onclick="syncUpload('overwrite')" disabled>
+                    <span class="ico">⬆️</span><span class="name">上传并覆盖</span>
+                    <span class="desc">用本机数据<br>覆盖云端</span>
                 </button>
             </div>
             <div class="sync-note" style="background:#f6f9ff;border-color:#dbe7fb;">
-                <b>合并规则：</b>题目与学习笔记按 ID 取并集；同一道题的作答记录以<b>最后一次作答时间较晚</b>的一方为准；做题总数、学习时长、每日统计等只增不减的计数<b>逐项取较大值</b>（不会重复累加）；练习进度按保存时间取较新。<br><b>双向同步</b>与<b>下载并合并</b>都遵循以上规则，区别在于双向同步会把合并结果同时写回云端与本机，点一次即可让两台设备对齐。
+                <b>合并规则：</b>题目与学习笔记按 ID 取并集；同一道题的作答记录以<b>最后一次作答时间较晚</b>的一方为准；做题总数、学习时长、每日统计等只增不减的计数<b>逐项取较大值</b>（不会重复累加）；练习进度按保存时间取较新。<br><b>五个操作的区别只在「结果写向哪一端」：</b>双向同步 = 两端都写（默认）；下载并合并 / 下载并覆盖 = 只写本机；上传并合并 / 上传并覆盖 = 只写云端。<b>合并</b>取并集、两边独有数据都不丢；<b>覆盖</b>是单向覆盖，被覆盖那端的独有改动会丢，所以会先弹二次确认。日常用默认的<b>双向同步</b>即可。
             </div>
         </div>
 
@@ -8327,7 +8341,7 @@ function renderSync() {
     document.getElementById('syncInfoDevice').textContent = getDeviceName();
 
     const dis = !connected || syncBusy;
-    ['syncBtnUpload','syncBtnMerge','syncBtnOverwrite'].forEach(id => {
+    ['syncBtnUpload','syncBtnMerge','syncBtnOverwrite','syncBtnUpMerge','syncBtnUpOverwrite'].forEach(id => {
         const b = document.getElementById(id);
         if (b) b.disabled = dis;
     });
@@ -8454,11 +8468,16 @@ function syncRequireReady() {
  * 现在的语义：本机 ∪ 云端 → 写回云端，同时应用到本机。
  * 两台设备各自的独有数据都保留，点一次即可对齐。
  */
-async function syncUpload() {
+async function syncUpload(mode) {
+    /* mode: 'both'（默认，双向）| 'merge'（上传并合并）| 'overwrite'（上传并覆盖）
+       'both' 与 'merge' 的合并计算完全相同 —— 差别只在「结果要不要也应用到本机」。
+       把两者写在同一个函数里，是为了永远只有一套合并规则，不会两边跑偏。 */
+    mode = mode || 'both';
     if (syncBusy) { showToast('⚠️ 同步正在进行中，请稍候', 'warning'); return; }
     if (!syncRequireReady()) return;
+    if (mode === 'overwrite' && !confirm('确定用本机数据覆盖云端吗？\n\n云端已有的题库、学习库、做题统计都会以本机为准，其他设备在云端留下的改动会丢失且无法撤销。\n建议改用「上传并合并」或「双向同步」。')) return;
     setSyncBusy(true);
-    syncLog('开始同步…');
+    syncLog(mode === 'both' ? '开始双向同步…' : (mode === 'merge' ? '开始上传并合并…' : '开始上传并覆盖…'));
     try {
         // 本机当前状态（与 applySnapshot 的 merge 分支用同一套取数逻辑）
         const localData = {
@@ -8474,6 +8493,24 @@ async function syncUpload() {
         });
 
         const cloud = await syncReadCloud();
+
+        // 上传并覆盖：不参与合并，直接把本机快照盖到云端（本机一个字节都不改）
+        if (mode === 'overwrite') {
+            const beforeCloud = cloud
+                ? { q: countSnapshotQuestions(cloud.snapshot), l: countSnapshotLearnings(cloud.snapshot) }
+                : { q: 0, l: 0 };
+            const snap = buildSnapshot();
+            const sha = await syncWriteCloud(snap, (cloud && cloud.sha) || null);
+            syncConfig.cloudSha = sha;
+            syncConfig.cloudSavedAt = snap.savedAt;
+            syncConfig.lastSyncAt = Date.now();
+            syncSaveConfigStore();
+            syncLog('已用本机数据覆盖云端：云端 ' + beforeCloud.q + '→' + countSnapshotQuestions(snap) + ' 题、' +
+                    beforeCloud.l + '→' + countSnapshotLearnings(snap) + ' 条（本机未改动）', 'ok');
+            showToast('✅ 已用本机数据覆盖云端', 'success');
+            hideSyncBanner();
+            return;
+        }
 
         // 云端还没有数据 → 首次上传，直接写本机快照
         if (!cloud) {
@@ -8518,7 +8555,8 @@ async function syncUpload() {
         // ② 应用到本机：同步是双向的，本机也应拿到云端的独有数据。
         //    复用 applySnapshot('merge') 会重复算一次合并，所以这里直接落地
         //    merged 结果 —— 与 applySnapshot 的 apply 段保持同一套写法。
-        applyMergedToLocal(merged);
+        // 'both' 才回写本机；'merge'（上传并合并）只动云端
+        if (mode === 'both') applyMergedToLocal(merged);
 
         syncConfig.cloudSha = sha;
         syncConfig.cloudSavedAt = outSnap.savedAt;
@@ -8526,9 +8564,15 @@ async function syncUpload() {
         syncSaveConfigStore();
 
         const afterLocal = { q: countQuestionsAll(), l: countLearningsAll() };
-        syncLog(`双向合并完成：本机 ${beforeLocal.q}→${afterLocal.q} 题、${beforeLocal.l}→${afterLocal.l} 条；` +
-                `云端 ${beforeCloud.q}→${countSnapshotQuestions(outSnap)} 题、${beforeCloud.l}→${countSnapshotLearnings(outSnap)} 条`, 'ok');
-        showToast('✅ 已双向合并（本机与云端都保留各自独有数据）', 'success');
+        if (mode === 'both') {
+            syncLog(`双向合并完成：本机 ${beforeLocal.q}→${afterLocal.q} 题、${beforeLocal.l}→${afterLocal.l} 条；` +
+                    `云端 ${beforeCloud.q}→${countSnapshotQuestions(outSnap)} 题、${beforeCloud.l}→${countSnapshotLearnings(outSnap)} 条`, 'ok');
+            showToast('✅ 已双向合并（本机与云端都保留各自独有数据）', 'success');
+        } else {
+            syncLog(`上传并合并完成：云端 ${beforeCloud.q}→${countSnapshotQuestions(outSnap)} 题、` +
+                    `${beforeCloud.l}→${countSnapshotLearnings(outSnap)} 条（本机未改动，仍为 ${afterLocal.q} 题 / ${afterLocal.l} 条）`, 'ok');
+            showToast('✅ 已上传合并结果（云端已更新，本机未改动）', 'success');
+        }
         hideSyncBanner();
     } catch (e) {
         syncLog('同步失败：' + syncErrorMessage(e), 'err');
