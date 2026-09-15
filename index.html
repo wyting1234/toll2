@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- build: 2026-09-15f (gitee owner normalize | 422 idempotent | 5 sync ops | bankfill 491q) -->
+<!-- build: 2026-09-15g (gitee empty-array notfound fix | owner normalize | 422 idempotent | 5 sync ops | bankfill 491q) -->
 <title>GESP赢家宝典 · v9.1 · 学习统计版</title>
 <script>/* SheetJS xlsx 0.18.5 (Apache-2.0) 内嵌版本，消除 CDN 依赖 */
 /*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
@@ -7925,7 +7925,9 @@ async function cloudFetch(method, url, body) {
     }
     return data;
 }
-/* 大文件取全文（Gitee 兼容 GitHub 的 raw Accept 写法） */
+/* 大文件取全文。Gitee 侧复用同一段签名逻辑，但它并不认 GitHub 的 raw Accept，
+   返回的仍是 contents 的 JSON 原文；好在 Gitee 单文件上限 100MB、也不像 GitHub
+   那样超过 1MB 就停止内联 content，所以 Gitee 上正常走不到这个分支。 */
 async function cloudFetchRaw(url, tries) {
     if (cloudProvider() !== 'gitee') return ghFetchRaw(url, tries);
     const full = giteeSignedUrl(url);
@@ -8168,6 +8170,17 @@ async function syncReadCloud() {
     try { meta = await cloudFetch('GET', api + ref); }
     catch (e) { if (e.status === 404) return null; throw e; }
 
+    /* Gitee 实测（2026-09-15）：contents API 对「路径不存在」返回 200 + 空数组 []，
+       而 GitHub 返回 404。不识别这一段，那个 [] 会被当成一个正常的「云端文件」
+       继续往下解析，最后卡在 !snap.data 上，报出「云端数据不完整」——用户据此
+       完全无法行动（真实成因只是「云端还没有这个文件」）。
+       这里把它归一成 GitHub 语义：空数组 = 文件不存在 = 云端暂无数据。 */
+    if (Array.isArray(meta)) {
+        if (!meta.length) return null;
+        throw new Error('「同步空间名」指向的是云端目录而不是数据文件，请把两台设备的'
+            + '同步空间名改成同一个（当前拼出的路径：' + syncFilePath() + '）');
+    }
+
     let text = '';
     if (meta.content) {
         /* 云端文件 ≤1MB：API 直接内联返回 base64，最稳，不碰任何 CDN */
@@ -8208,7 +8221,8 @@ async function syncReadCloud() {
         }
         try { snap = JSON.parse(text); } catch (e) { throw new Error('云端数据解压后无法解析'); }
     }
-    if (!snap || !snap.data) throw new Error('云端数据不完整');
+    if (!snap || !snap.data) throw new Error('云端文件不是本应用的数据快照（缺少 data 字段），'
+        + '请确认两台设备填的「同步空间名」一致');
     return { snapshot: snap, sha: meta.sha };
 }
 async function syncWriteCloud(snapshot, sha) {
