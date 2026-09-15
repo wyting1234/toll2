@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- build: 2026-09-15d (5 sync ops | bankfill 491q | github+gitee) -->
+<!-- build: 2026-09-15e (gitee owner autofix | 422 idempotent | 5 sync ops | bankfill 491q) -->
 <title>GESP赢家宝典 · v9.1 · 学习统计版</title>
 <script>/* SheetJS xlsx 0.18.5 (Apache-2.0) 内嵌版本，消除 CDN 依赖 */
 /*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
@@ -7698,6 +7698,9 @@ function syncDefaultConfig() {
 }
 let syncConfig = syncDefaultConfig();
 let syncRemote = null;
+/* 令牌所属账号的登录名（/user 返回的 login）。Gitee 的建仓端点只认令牌身份，
+   所以它是判断「用户名填错」的唯一权威来源；由 syncConnect 填充，避免重复请求。 */
+let syncAccountLogin = '';
 let syncBusy = false;
 let syncLogs = [];
 let syncFormFilled = false;
@@ -7856,6 +7859,28 @@ function giteeSignedUrl(url) {
     return url + (url.indexOf('?') >= 0 ? '&' : '?') + 'access_token=' + encodeURIComponent(tok);
 }
 /* 统一请求入口：Gitee 会自动把 access_token 拼进查询串 */
+/* 把 Gitee 的错误响应压成一行人话。
+   Gitee 的表单校验错误没有 message 字段，字段名直接就是出错的位置，例如
+     {"base":["已存在同地址仓库（忽略大小写）"]}
+   原实现取不到 message 就把整段 JSON 原样抛给用户，于是界面出现
+   「请求被拒绝（422）：{"base":[...]}」这种没法据以行动的提示。 */
+function giteeErrText(data) {
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+    if (typeof data !== 'object') return String(data);
+    if (typeof data.message === 'string' && data.message) return data.message;
+    const parts = [];
+    Object.keys(data).forEach(function (k) {
+        if (k === 'raw') return;
+        const v = data[k];
+        if (Array.isArray(v)) {
+            v.forEach(function (m) { if (m) parts.push(k === 'base' ? String(m) : k + ': ' + String(m)); });
+        } else if (typeof v === 'string' && v) {
+            parts.push(v);
+        }
+    });
+    return parts.join('；');
+}
 async function cloudFetch(method, url, body) {
     if (cloudProvider() !== 'gitee') return ghFetch(method, url, body);
     const full = giteeSignedUrl(url);
@@ -7869,8 +7894,7 @@ async function cloudFetch(method, url, body) {
     let data = null;
     if (text) { try { data = JSON.parse(text); } catch (e) { data = { raw: text }; } }
     if (!res.ok) {
-        let msg = (data && (data.message || data.error || data.raw)) || ('HTTP ' + res.status);
-        if (typeof msg !== 'string') msg = JSON.stringify(msg);
+        let msg = giteeErrText(data) || ('HTTP ' + res.status);
         const err = new Error(msg);
         err.status = res.status;
         err.data = data;
@@ -7912,10 +7936,17 @@ async function cloudProbeRepo() {
         const owner = (syncConfig.giteeOwner || '').trim();
         const repo = (syncConfig.giteeRepo || '').trim() || 'gesp-sync-data';
         if (!owner) return null;
-        try {
-            const info = await cloudFetch('GET', cloudApiBase() + '/repos/' + owner + '/' + repo);
-            return { owner: owner, repo: repo, full: owner + '/' + repo, branch: (info && info.default_branch) || 'master' };
-        } catch (e) { if (e.status === 404) return null; throw e; }
+        /* 与 syncEnsureRepoGitee 同源：填写的 owner 与令牌账号不一致时，
+           也要能按真实 login 探到，否则「连接测试」和「保存并连接」结论会打架。 */
+        const owners = [owner];
+        if (syncAccountLogin && syncAccountLogin.toLowerCase() !== owner.toLowerCase()) owners.push(syncAccountLogin);
+        for (let i = 0; i < owners.length; i++) {
+            try {
+                const info = await cloudFetch('GET', cloudApiBase() + '/repos/' + owners[i] + '/' + repo);
+                return { owner: owners[i], repo: repo, full: owners[i] + '/' + repo, branch: (info && info.default_branch) || 'master' };
+            } catch (e) { if (e.status !== 404) throw e; }
+        }
+        return null;
     }
     const user = await cloudFetch('GET', cloudApiBase() + '/user');
     try {
@@ -8010,25 +8041,87 @@ async function syncEnsureRepo() {
 /* Gitee 版：GitHub 能用 /user 拿到 login 再拼仓库名，Gitee 则要求用户明确填写
    空间地址，免得猜错就往别人名下建仓库。 */
 async function syncEnsureRepoGitee() {
-    const owner = (syncConfig.giteeOwner || '').trim();
     const repo = (syncConfig.giteeRepo || '').trim() || 'gesp-sync-data';
-    if (!owner) throw new Error('请先填写 Gitee 用户名（个人空间地址）');
-    let info = null;
-    try { info = await cloudFetch('GET', cloudApiBase() + '/repos/' + owner + '/' + repo); }
-    catch (e) { if (e.status !== 404) throw e; }
-    if (!info) {
-        syncLog(`Gitee 仓库 ${owner}/${repo} 不存在，正在自动创建私有仓库…`);
-        await cloudFetch('POST', cloudApiBase() + '/user/repos', {
-            name: repo, private: true, auto_init: true,
-            description: 'GESP赢家宝典 · 云同步数据（应用自动创建，请勿手动改动）'
-        });
-        await new Promise(r => setTimeout(r, 2000));
-        info = await cloudFetch('GET', cloudApiBase() + '/repos/' + owner + '/' + repo);
-        syncLog(`已创建 Gitee 私有仓库 ${owner}/${repo}`, 'ok');
-    } else if (!info.private) {
-        syncLog(`⚠️ Gitee 仓库 ${owner}/${repo} 是公开的，同步内容可能被他人看到，建议改成私有`, 'warn');
+    const owner = (syncConfig.giteeOwner || '').trim();
+
+    /* 先确定令牌真实账号。用户名这一栏留空也照样能用 ——
+       Gitee 只有 POST /user/repos 这一个建仓入口，仓库一定建在「令牌所属账号」
+       名下，URL 里的 owner 约束不到它，所以那栏本质上是冗余信息，填错了只会添乱。
+       实测踩的坑（用户报的 422 就是它）：
+         用户名填成昵称/带空格/另一个账号时
+         -> 探测 /repos/{填的名字}/{repo} 得 404「Not Found Project」-> 判定不存在
+         -> 去建仓 -> 令牌账号下已有同名仓库 -> 422「已存在同地址仓库（忽略大小写）」
+       用户看到的就是这句和填写内容毫无关联的报错。 */
+    let login = syncAccountLogin;
+    if (!login) {
+        try {
+            const me = await cloudFetch('GET', cloudApiBase() + '/user');
+            login = (me && (me.login || me.username)) || '';
+        } catch (e) { /* 取不到身份不阻断，退回按填写的 owner 处理 */ }
     }
-    syncRemote = { owner: owner, repo: repo, full: owner + '/' + repo, branch: (info && info.default_branch) || 'master' };
+    if (!owner && !login) throw new Error('请先填写 Gitee 令牌，会自动识别你的账号');
+
+    /* 候选 owner：填写的优先，令牌账号兜底 */
+    const owners = [];
+    if (owner) owners.push(owner);
+    if (login && (!owner || login.toLowerCase() !== owner.toLowerCase())) owners.push(login);
+    if (!owner && login) syncLog('未填用户名，直接按令牌账号「' + login + '」查找仓库');
+
+    let info = null, hit = '';
+    for (let i = 0; i < owners.length && !info; i++) {
+        try {
+            info = await cloudFetch('GET', cloudApiBase() + '/repos/' + owners[i] + '/' + repo);
+            hit = owners[i];
+            if (i > 0) syncLog('按填写的「' + owner + '」没找到仓库，但令牌账号「' + login + '」下有，已自动改用 ' + login + '/' + repo, 'warn');
+        } catch (e) { if (e.status !== 404) throw e; }
+    }
+
+    if (!info) {
+        syncLog('Gitee 仓库 ' + owner + '/' + repo + ' 不存在，正在自动创建私有仓库…');
+        try {
+            await cloudFetch('POST', cloudApiBase() + '/user/repos', {
+                name: repo, private: true, auto_init: true,
+                description: 'GESP赢家宝典 · 云同步数据（应用自动创建，请勿手动改动）'
+            });
+            syncLog('已创建 Gitee 私有仓库 ' + owner + '/' + repo, 'ok');
+        } catch (e) {
+            /* 422 = Gitee 的表单校验失败，响应体形如
+                 {"base":["已存在同地址仓库（忽略大小写）"]}
+               其中「已存在」是幂等情况而非错误：仓库本来就在，只是上面没探测到。
+               放它过去，下面重新探测；其余 422 原因（名字不合规等）照旧抛出。 */
+            const base = (e && e.data && e.data.base) || [];
+            const dup = base.some(function (m) { return /已存在|already exists/i.test(String(m)); });
+            if (e.status !== 422 || !dup) throw e;
+            syncLog('Gitee 提示已有同名仓库，跳过创建，直接复用', 'warn');
+        }
+        await new Promise(r => setTimeout(r, 2000));
+        for (let i = 0; i < owners.length && !info; i++) {
+            try {
+                info = await cloudFetch('GET', cloudApiBase() + '/repos/' + owners[i] + '/' + repo);
+                hit = owners[i];
+                if (i > 0) syncLog('已自动改用令牌账号 ' + login + '/' + repo, 'warn');
+            } catch (err) { if (err.status !== 404) throw err; }
+        }
+        if (!info) {
+            const who = login ? '令牌实际属于账号「' + login + '」' : '未能取到令牌所属账号';
+            throw new Error(
+                '仓库 ' + (owner || login) + '/' + repo + ' 读不到，但换个名字建仓又提示已存在。' + who + '。请检查：' +
+                '①「用户名」要填 Gitee 的个人空间地址（个人主页网址 gitee.com/ 后面那一段），不是昵称；' +
+                '② 令牌要勾选 projects 权限'
+            );
+        }
+    } else if (info.private === false) {
+        syncLog('⚠️ Gitee 仓库 ' + hit + '/' + repo + ' 是公开的，同步内容可能被他人看到，建议改成私有', 'warn');
+    }
+
+    syncRemote = { owner: hit, repo: repo, full: hit + '/' + repo, branch: (info && info.default_branch) || 'master' };
+    /* owner 被自动纠正过：把配置和输入框一起改成对的，否则下次连接又从表单读回错值 */
+    if (hit && hit !== owner) {
+        syncConfig.giteeOwner = hit;
+        try { syncSaveConfigStore(); } catch (e) {}
+        const inp = document.getElementById('giteeOwner');
+        if (inp) inp.value = hit;
+    }
     return syncRemote;
 }
 async function syncReadCloud() {
@@ -8418,7 +8511,11 @@ function syncErrorMessage(e) {
     if (e && e.status === 403) return who + ' 令牌权限不足或触发限流（403），请确认勾选了 ' + scope + ' 权限';
     if (e && e.status === 404) return '仓库或数据文件不存在（404）';
     if (e && e.status === 409) return '云端数据已被其他设备更新（409），请重新下载后再上传';
-    if (e && e.status === 422) return '请求被拒绝（422）：' + (e.message || '');
+    if (e && e.status === 422) {
+        /* 422 多为「仓库名/用户名不符合 Gitee 规则」，把云端原话带出来才可修 */
+        const m = (e.message && !/^HTTP \d+$/.test(e.message)) ? e.message : '云端拒绝了这次请求，请检查用户名与仓库名';
+        return '请求被拒绝（422）：' + m;
+    }
     if (e && /Failed to fetch|NetworkError|Load failed|Network request failed/i.test(String(e.message))) {
         return '网络请求失败，请检查网络或代理' + (cloudProvider() === 'gitee' ? '（Gitee 国内直连，一般无需代理）' : '');
     }
@@ -8432,7 +8529,11 @@ async function syncConnect() {
     syncLog('开始连接云端…');
     try {
         const user = await cloudFetch('GET', cloudApiBase() + '/user');
-        syncLog(cloudLabel() + ' 令牌有效，账号：' + (user.login || user.name || '未知'), 'ok');
+        /* 只有 login 是「可用作仓库 namespace 的登录名」，name 是昵称（中文），
+           拿昵称去拼 /repos/{owner}/{repo} 一定 404 —— 这正是 422 报错的成因。 */
+        syncAccountLogin = (user && (user.login || user.username)) || '';
+        syncLog(cloudLabel() + ' 令牌有效，账号：' + (syncAccountLogin || user.name || '未知')
+            + (user && user.name && syncAccountLogin ? '（昵称 ' + user.name + '）' : ''), 'ok');
         await syncEnsureRepo();
         const cloud = await syncReadCloud();
         if (cloud) {
