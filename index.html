@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<!-- build: 2026-09-15-syncfix (gzip + api-raw) -->
 <title>GESP赢家宝典 · v9.1 · 学习统计版</title>
 <script>/* SheetJS xlsx 0.18.5 (Apache-2.0) 内嵌版本，消除 CDN 依赖 */
 /*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
@@ -7183,6 +7184,44 @@ function b64decode(b64) {
     return new TextDecoder().decode(bytes);
 }
 
+/* ---- gzip 压缩 / 解压 ----
+   为什么要压缩：GitHub Contents API 对「大于 1MB」的文件不再内联返回 content，
+   只给 download_url（raw.githubusercontent.com）。该域名在国内经常连接被重置，
+   于是页面 fetch 抛 Failed to fetch，用户看到「网络请求失败」。
+   把快照 gzip 后从 1.9MB 压到 ~0.45MB（base64 后 ~0.6MB），云端文件回到 1MB 以下，
+   API 就会内联返回内容，彻底不经过境外 CDN。 */
+function canGzip() {
+    return typeof CompressionStream === 'function' && typeof DecompressionStream === 'function';
+}
+function bufToB64(buf) {
+    let bin = '';
+    const CH = 0x8000;
+    for (let i = 0; i < buf.length; i += CH) {
+        bin += String.fromCharCode.apply(null, buf.subarray(i, i + CH));
+    }
+    return btoa(bin);
+}
+function b64ToBuf(b64) {
+    const bin = atob(String(b64).replace(/\s/g, ''));
+    const out = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+}
+async function gzipStr(str) {
+    const cs = new CompressionStream('gzip');
+    const w = cs.writable.getWriter();
+    w.write(new TextEncoder().encode(str));
+    w.close();
+    return new Uint8Array(await new Response(cs.readable).arrayBuffer());
+}
+async function gunzipStr(bytes) {
+    const ds = new DecompressionStream('gzip');
+    const w = ds.writable.getWriter();
+    w.write(bytes);
+    w.close();
+    return new TextDecoder().decode(await new Response(ds.readable).arrayBuffer());
+}
+
 /* ---- 日志 ---- */
 function syncLog(msg, kind) {
     syncLogs.push({ t: new Date().toLocaleTimeString('zh-CN'), msg: String(msg), kind: kind || '' });
@@ -7231,6 +7270,47 @@ async function ghFetch(method, url, body) {
     }
     return data;
 }
+
+/* 带退避重试的 fetch：网络抖动/断流时重试，4xx（除 408/429）不重试。
+   「下载失败」很多时候就是一次断流，重试能救回来。 */
+async function fetchWithRetry(url, opts, tries, label) {
+    tries = tries || 3;
+    let last = null;
+    for (let i = 1; i <= tries; i++) {
+        try {
+            const res = await fetch(url, opts);
+            if (res.ok) return res;
+            if (res.status < 500 && res.status !== 408 && res.status !== 429) {
+                const err = new Error('HTTP ' + res.status);
+                err.status = res.status;
+                throw err;
+            }
+            last = new Error('HTTP ' + res.status);
+        } catch (e) {
+            if (e && e.status && e.status < 500 && e.status !== 408 && e.status !== 429) throw e;
+            last = e;
+        }
+        if (i < tries) {
+            const wait = 600 * i;
+            syncLog('（' + (label || '请求') + '）第 ' + i + ' 次中断，' + wait + 'ms 后重试…', 'warn');
+            await new Promise(r => setTimeout(r, wait));
+        }
+    }
+    throw last || new Error((label || '请求') + '失败');
+}
+/* 大文件专用：用 Accept: application/vnd.github.raw 直接向 api.github.com 取全文。
+   这样绕开 raw.githubusercontent.com，且不依赖 download_url 里那个约 1 小时就失效的临时 token。 */
+async function ghFetchRaw(url, tries) {
+    const res = await fetchWithRetry(url, {
+        headers: {
+            'Authorization': 'Bearer ' + syncConfig.token,
+            'Accept': 'application/vnd.github.raw',
+            'X-GitHub-Api-Version': '2022-11-28'
+        },
+        cache: 'no-store'
+    }, tries || 3, '大文件下载');
+    return await res.text();
+}
 async function syncEnsureRepo() {
     const user = await ghFetch('GET', 'https://api.github.com/user');
     const owner = user.login;
@@ -7254,23 +7334,85 @@ async function syncEnsureRepo() {
 }
 async function syncReadCloud() {
     if (!syncRemote) throw new Error('尚未连接云端');
+    const api = `https://api.github.com/repos/${syncRemote.full}/contents/${syncFilePath()}`;
+    const ref = '?ref=' + encodeURIComponent(syncRemote.branch);
     let meta;
-    try { meta = await ghFetch('GET', `https://api.github.com/repos/${syncRemote.full}/contents/${syncFilePath()}?ref=${encodeURIComponent(syncRemote.branch)}`); }
+    try { meta = await ghFetch('GET', api + ref); }
     catch (e) { if (e.status === 404) return null; throw e; }
+
     let text = '';
-    if (meta.content) text = b64decode(meta.content);
-    else if (meta.download_url) text = await (await fetch(meta.download_url)).text();
-    if (!text) return null;
+    if (meta.content) {
+        /* 云端文件 ≤1MB：API 直接内联返回 base64，最稳，不碰任何 CDN */
+        text = b64decode(meta.content);
+    } else {
+        /* 云端文件 >1MB：API 不再内联（content 为空），只给 download_url。
+           原来直接 fetch(download_url) 会走 raw.githubusercontent.com —— 该域名
+           国内经常连接被重置，且 URL 里的临时 token 约 1 小时就失效，
+           失败后又被当成「云端暂无数据」，非常误导。
+           现在改走 api.github.com 的 raw 模式（实测可稳定取到 1.9MB 全文），
+           万一 raw 模式也不行，再退回直链兜底。 */
+        const kb = Math.round((meta.size || 0) / 1024);
+        syncLog('云端文件约 ' + kb + 'KB，超出 API 内联上限（1MB），改走 raw 通道下载…');
+        try {
+            text = await ghFetchRaw(api + ref, 3);
+        } catch (e1) {
+            syncLog('raw 通道失败（' + ((e1 && e1.message) || e1) + '），尝试直链兜底…', 'warn');
+            if (!meta.download_url) throw e1;
+            const r = await fetchWithRetry(meta.download_url, { cache: 'no-store' }, 3, '直链兜底');
+            text = await r.text();
+        }
+    }
+    /* 失败必须抛异常：旧版这里 return null，会把「网络故障」显示成「云端还没有数据」，
+       用户以为数据丢了。现在只有「文件不存在(404)」才返回 null。 */
+    if (!text) throw new Error('云端文件下载后为空（可能被中断），请重试');
+
     let snap;
     try { snap = JSON.parse(text); } catch (e) { throw new Error('云端数据无法解析，可能已损坏'); }
+
+    /* v2 压缩包格式：{"__pack":1,"enc":"gzip","data":"<base64>"}
+       旧格式（明文快照，无 __pack）直接沿用，保证向后兼容。 */
+    if (snap && snap.__pack) {
+        if (snap.enc === 'gzip') {
+            if (!canGzip()) throw new Error('云端数据是 gzip 压缩的，当前浏览器不支持解压（请升级浏览器）');
+            text = await gunzipStr(b64ToBuf(snap.data));
+        } else {
+            text = snap.data;
+        }
+        try { snap = JSON.parse(text); } catch (e) { throw new Error('云端数据解压后无法解析'); }
+    }
     if (!snap || !snap.data) throw new Error('云端数据不完整');
     return { snapshot: snap, sha: meta.sha };
 }
 async function syncWriteCloud(snapshot, sha) {
     if (!syncRemote) throw new Error('尚未连接云端');
+    const json = JSON.stringify(snapshot);
+    const rawKB = Math.round(new TextEncoder().encode(json).length / 1024);
+
+    /* 压缩上传：让云端文件回到 1MB 以内，读取时才能走 API 内联通道。
+       旧格式（明文 JSON）仍可被新版读取，所以升级不破坏已有云端数据。 */
+    let payload = json;
+    let packed = false;
+    let outKB = rawKB;
+    if (canGzip()) {
+        try {
+            const gz = await gzipStr(json);
+            payload = JSON.stringify({ __pack: 1, enc: 'gzip', data: bufToB64(gz) });
+            packed = true;
+            outKB = Math.round(gz.length / 1024);
+            syncLog('压缩完成：' + rawKB + 'KB → ' + outKB + 'KB（gzip，' +
+                    (rawKB > 0 ? (rawKB / Math.max(outKB, 1)).toFixed(1) : '1') + 'x）', 'ok');
+        } catch (e) {
+            syncLog('压缩失败，改用明文上传：' + ((e && e.message) || e), 'warn');
+        }
+    }
+    if (outKB > 1024) {
+        syncLog('⚠️ 上传体积 ' + outKB + 'KB 仍超过 1MB，下载会走较慢的 raw 通道。' +
+                '建议在题库里精简非必要的自建题目，或联系开发者优化存储结构。', 'warn');
+    }
+
     const body = {
-        message: `sync: ${new Date().toLocaleString('zh-CN')} · ${getDeviceName()}`,
-        content: b64encode(JSON.stringify(snapshot)),
+        message: `sync: ${new Date().toLocaleString('zh-CN')} · ${getDeviceName()}${packed ? ' · gzip' : ''}`,
+        content: b64encode(payload),
         branch: syncRemote.branch
     };
     if (sha) body.sha = sha;
@@ -7785,7 +7927,7 @@ document.getElementById('levelSelector').value = currentLevel;
 renderAll();
 updateCountdown();
 if (syncConfig.autoCheck && syncConfig.token) setTimeout(syncAutoCheckCloud, 1000);
-console.log('🏆 GESP赢家宝典 v9.1 已加载！');
+console.log('🏆 GESP赢家宝典 v9.1 已加载！[sync-fix 2026-09-15]');
 console.log('📚 当前级别：' + LEVEL_NAMES[currentLevel] + '，共 ' + questions.length + ' 道题');
 console.log('💾 数据来源：' + (loaded ? 'localStorage（上次保存）' : '默认初始数据'));
 console.log('⏳ 倒计时可编辑 · 🎯 每日目标可设置 · 📊 做题数据自动记录');
