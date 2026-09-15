@@ -829,8 +829,8 @@ body.nav-open{overflow:hidden}
             <div class="card-header"><h3>同步操作</h3><span class="tag" id="syncOpHint">先保存配置并连接</span></div>
             <div class="sync-actions">
                 <button class="sync-action upload" id="syncBtnUpload" onclick="syncUpload()" disabled>
-                    <span class="ico">⬆️</span><span class="name">上传到云端</span>
-                    <span class="desc">用本机数据覆盖云端<br>云端原有数据将被替换</span>
+                    <span class="ico">🔄</span><span class="name">双向同步</span>
+                    <span class="desc">本机与云端合并后<br>两边同时更新（推荐）</span>
                 </button>
                 <button class="sync-action merge" id="syncBtnMerge" onclick="syncDownload('merge')" disabled>
                     <span class="ico">🔀</span><span class="name">下载并合并</span>
@@ -842,7 +842,7 @@ body.nav-open{overflow:hidden}
                 </button>
             </div>
             <div class="sync-note" style="background:#f6f9ff;border-color:#dbe7fb;">
-                <b>合并规则：</b>题目与学习笔记按 ID 取并集；同一道题的作答记录以<b>最后一次作答时间较晚</b>的一方为准；做题总数、学习时长、每日统计等只增不减的计数<b>逐项取较大值</b>（不会重复累加）。
+                <b>合并规则：</b>题目与学习笔记按 ID 取并集；同一道题的作答记录以<b>最后一次作答时间较晚</b>的一方为准；做题总数、学习时长、每日统计等只增不减的计数<b>逐项取较大值</b>（不会重复累加）；练习进度按保存时间取较新。<br><b>双向同步</b>与<b>下载并合并</b>都遵循以上规则，区别在于双向同步会把合并结果同时写回云端与本机，点一次即可让两台设备对齐。
             </div>
         </div>
 
@@ -7459,36 +7459,8 @@ function applySnapshot(snapshot, mode) {
             merged.levels[k] = { questions: c.questions || [], learnings: c.learnings || [] };
         });
     }
-    LEVEL_KEYS.forEach(k => {
-        const m = merged.levels[k] || { questions: [], learnings: [] };
-        levelData[k].questions = buildLevelQuestions(k, m.questions || []);
-        levelData[k].learnings = m.learnings || [];
-    });
-    if (merged.userConfig) {
-        userConfig = { ...userConfig, ...merged.userConfig };
-        ['单选题','判断题','编程题'].forEach(t => {
-            if (!userConfig.questionStats[t]) userConfig.questionStats[t] = { total: 0, correct: 0, totalSeconds: 0 };
-        });
-        saveUserConfig();
-    }
-    if (typeof merged.declaration === 'string' && merged.declaration) {
-        declarationText = merged.declaration;
-        userConfig.declaration = merged.declaration;
-        saveUserConfig();
-    }
-    LEVEL_KEYS.forEach(k => {
-        try {
-            const p = merged.practice && merged.practice[k];
-            if (p) localStorage.setItem(PRACTICE_KEY + '_' + k, JSON.stringify(p));
-            else localStorage.removeItem(PRACTICE_KEY + '_' + k);
-        } catch (e) { /* 忽略单项 */ }
-    });
-    questions = levelData[currentLevel].questions;
-    learnings = levelData[currentLevel].learnings;
-    practiceState = { queue: [], currentIndex: 0, answered: false, correctCount: 0, wrongCount: 0, wrongQuestions: [], selectedAnswer: null, mode: 'normal', examPaper: null };
-    saveToLocal();
-    renderAll();
-    updateCountdown();
+    // 落地（与「上传到云端」共用同一段逻辑，见 applyMergedToLocal）
+    applyMergedToLocal(merged);
     return merged;
 }
 
@@ -7600,29 +7572,135 @@ function syncRequireReady() {
     if (!syncRemote) { showToast('⚠️ 请先点击「保存并连接」', 'error'); switchPage('page-sync'); return false; }
     return true;
 }
+/* 双向同步：把本机与云端合并后，两边都写入合并结果。
+ *
+ * 为什么不再「直接覆盖云端」：原实现 buildSnapshot() 后 syncWriteCloud()，
+ * 云端数据被本机整份替换。多设备场景下这会造成静默丢数据 ——
+ * A 设备刚同步完、B 设备有离线新增，在 B 上点「上传」，A 那边云端已有的
+ * 内容就被冲掉了。而唯一安全的「下载并合并」还得先有云端数据、且是单向的
+ * （只把云端并进本机，不把本机并进云端），用户要连点两次才能让两边对齐。
+ *
+ * 现在的语义：本机 ∪ 云端 → 写回云端，同时应用到本机。
+ * 两台设备各自的独有数据都保留，点一次即可对齐。
+ */
 async function syncUpload() {
     if (syncBusy) { showToast('⚠️ 同步正在进行中，请稍候', 'warning'); return; }
     if (!syncRequireReady()) return;
-    if (!confirm('确定把本机数据上传到云端吗？\n\n云端原有的数据会被本机数据替换（本机数据不受影响）。')) return;
     setSyncBusy(true);
-    syncLog('开始上传…');
+    syncLog('开始同步…');
     try {
-        const snap = buildSnapshot();
+        // 本机当前状态（与 applySnapshot 的 merge 分支用同一套取数逻辑）
+        const localData = {
+            savedAt: lastLocalSavedAt(),
+            levels: {}, practice: getLocalPracticeAll(),
+            userConfig, declaration: declarationText
+        };
+        LEVEL_KEYS.forEach(k => {
+            localData.levels[k] = {
+                questions: stripForStore(k, levelData[k].questions),
+                learnings: levelData[k].learnings
+            };
+        });
+
         const cloud = await syncReadCloud();
-        const sha = await syncWriteCloud(snap, cloud ? cloud.sha : null);
+
+        // 云端还没有数据 → 首次上传，直接写本机快照
+        if (!cloud) {
+            const snap = buildSnapshot();
+            const sha = await syncWriteCloud(snap, null);
+            syncConfig.cloudSha = sha;
+            syncConfig.cloudSavedAt = snap.savedAt;
+            syncConfig.lastSyncAt = Date.now();
+            syncSaveConfigStore();
+            syncLog('云端暂无数据，已把本机 ' + countSnapshotQuestions(snap) + ' 道题、' +
+                    countSnapshotLearnings(snap) + ' 条学习记录作为首次快照上传', 'ok');
+            showToast('✅ 已上传到云端（首次）', 'success');
+            hideSyncBanner();
+            return;
+        }
+
+        // 云端有数据 → 双向合并
+        const cloudSnap = cloud.snapshot || {};
+        const cloudData = cloudSnap.data || {};
+        const beforeLocal = { q: countQuestionsAll(), l: countLearningsAll() };
+        const beforeCloud = { q: countSnapshotQuestions(cloudSnap), l: countSnapshotLearnings(cloudSnap) };
+
+        const merged = mergeSyncData(localData, cloudData);
+
+        // ① 写回云端：组装成与 buildSnapshot 同构的快照
+        const outSnap = {
+            format: 'gesp-sync',
+            snapshotVersion: SYNC_SNAPSHOT_VERSION,
+            appVersion: '9.2',
+            space: syncConfig.space || 'default',
+            savedAt: Date.now(),
+            device: { id: getDeviceId(), name: getDeviceName() },
+            data: {
+                userConfig: merged.userConfig,
+                declaration: (merged.declaration != null ? merged.declaration : declarationText),
+                levels: merged.levels,
+                practice: merged.practice
+            }
+        };
+        const sha = await syncWriteCloud(outSnap, cloud.sha || null);
+
+        // ② 应用到本机：同步是双向的，本机也应拿到云端的独有数据。
+        //    复用 applySnapshot('merge') 会重复算一次合并，所以这里直接落地
+        //    merged 结果 —— 与 applySnapshot 的 apply 段保持同一套写法。
+        applyMergedToLocal(merged);
+
         syncConfig.cloudSha = sha;
-        syncConfig.cloudSavedAt = snap.savedAt;
+        syncConfig.cloudSavedAt = outSnap.savedAt;
         syncConfig.lastSyncAt = Date.now();
         syncSaveConfigStore();
-        syncLog('上传成功，共 ' + countSnapshotQuestions(snap) + ' 道题、' + countSnapshotLearnings(snap) + ' 条学习记录', 'ok');
-        showToast('✅ 已上传到云端', 'success');
+
+        const afterLocal = { q: countQuestionsAll(), l: countLearningsAll() };
+        syncLog(`双向合并完成：本机 ${beforeLocal.q}→${afterLocal.q} 题、${beforeLocal.l}→${afterLocal.l} 条；` +
+                `云端 ${beforeCloud.q}→${countSnapshotQuestions(outSnap)} 题、${beforeCloud.l}→${countSnapshotLearnings(outSnap)} 条`, 'ok');
+        showToast('✅ 已双向合并（本机与云端都保留各自独有数据）', 'success');
         hideSyncBanner();
     } catch (e) {
-        syncLog('上传失败：' + syncErrorMessage(e), 'err');
-        showToast('❌ 上传失败：' + syncErrorMessage(e), 'error');
+        syncLog('同步失败：' + syncErrorMessage(e), 'err');
+        showToast('❌ 同步失败：' + syncErrorMessage(e), 'error');
     } finally {
         setSyncBusy(false);
     }
+}
+
+/* 把 mergeSyncData 的结果落地到本机。
+ * 抽取出来是为了让「上传」与「下载并合并」共用同一段落地逻辑，
+ * 避免两处写法漂移（applySnapshot 的 merge 分支现在也调它）。 */
+function applyMergedToLocal(merged) {
+    LEVEL_KEYS.forEach(k => {
+        const m = merged.levels[k] || { questions: [], learnings: [] };
+        levelData[k].questions = buildLevelQuestions(k, m.questions || []);
+        levelData[k].learnings = m.learnings || [];
+    });
+    if (merged.userConfig) {
+        userConfig = { ...userConfig, ...merged.userConfig };
+        ['单选题','判断题','编程题'].forEach(t => {
+            if (!userConfig.questionStats[t]) userConfig.questionStats[t] = { total: 0, correct: 0, totalSeconds: 0 };
+        });
+        saveUserConfig();
+    }
+    if (typeof merged.declaration === 'string' && merged.declaration) {
+        declarationText = merged.declaration;
+        userConfig.declaration = merged.declaration;
+        saveUserConfig();
+    }
+    LEVEL_KEYS.forEach(k => {
+        try {
+            const p = merged.practice && merged.practice[k];
+            if (p) localStorage.setItem(PRACTICE_KEY + '_' + k, JSON.stringify(p));
+            else localStorage.removeItem(PRACTICE_KEY + '_' + k);
+        } catch (e) { /* 忽略单项 */ }
+    });
+    questions = levelData[currentLevel].questions;
+    learnings = levelData[currentLevel].learnings;
+    practiceState = { queue: [], currentIndex: 0, answered: false, correctCount: 0, wrongCount: 0, wrongQuestions: [], selectedAnswer: null, mode: 'normal', examPaper: null };
+    saveToLocal();
+    renderAll();
+    updateCountdown();
 }
 async function syncDownload(mode) {
     if (syncBusy) { showToast('⚠️ 同步正在进行中，请稍候', 'warning'); return; }
