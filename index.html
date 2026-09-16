@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- build: 2026-09-15g (gitee empty-array notfound fix | owner normalize | 422 idempotent | 5 sync ops | bankfill 491q) -->
+<!-- build: 2026-09-16a (auto bidirectional sync | ops above config | gitee empty-array fix | owner normalize | 422 idempotent | 5 sync ops | bankfill 491q) -->
 <title>GESP赢家宝典 · v9.1 · 学习统计版</title>
 <script>/* SheetJS xlsx 0.18.5 (Apache-2.0) 内嵌版本，消除 CDN 依赖 */
 /*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
@@ -83,6 +83,17 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
 .sync-provider label .hint{font-weight:400;color:#8b9bb4}
 .sync-provider input{width:15px!important;height:15px;margin:0;cursor:pointer;accent-color:#3b82f6;flex:none}
 .sync-btns{display:flex;gap:10px;flex-wrap:wrap}
+/* 自动双向同步控制条 */
+.sync-auto{margin:0 0 14px;padding:12px 14px;border-radius:11px;background:#f4f8ff;border:1px solid #dbe7fb}
+.sync-auto-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.sync-auto-title{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:#3e5a7a;cursor:pointer;user-select:none;margin:0}
+.sync-auto-title input{width:15px;height:15px;cursor:pointer;accent-color:#3b82f6;flex:none;margin:0}
+.sync-auto-state{font-size:12px;font-weight:600;color:#8b9bb4;white-space:nowrap}
+.sync-auto-state.on{color:#0d8a5f}
+.sync-auto-state.run{color:#b45309}
+.sync-auto-row{display:flex;align-items:center;gap:9px;margin-top:10px;font-size:12px;color:#5e6f8d;flex-wrap:wrap}
+.sync-auto-row select{padding:5px 9px;border:1px solid #dbe3ee;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;font-family:inherit;cursor:pointer;flex:1;min-width:210px}
+.sync-auto-tip{margin-top:9px;font-size:11.5px;line-height:1.7;color:#7c8aa0}
 .sync-actions{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 .sync-action{position:relative;padding:16px 12px;border-radius:12px;border:1px solid #e2e9f2;background:#fff;cursor:pointer;text-align:center;transition:.15s;font-family:inherit}
 .sync-action:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 18px rgba(30,58,95,.1);border-color:#c7d7ee}
@@ -807,6 +818,51 @@ body.nav-open{overflow:hidden}
         </div>
 
         <div class="card">
+            <div class="card-header"><h3>同步操作</h3><span class="tag" id="syncOpHint">先保存配置并连接</span></div>
+            <div class="sync-auto">
+                <div class="sync-auto-head">
+                    <label class="sync-auto-title"><input type="checkbox" id="syncAutoOn" onchange="syncToggleAuto()"> 数据变动后自动双向同步</label>
+                    <span class="sync-auto-state" id="syncAutoState">未开启</span>
+                </div>
+                <div class="sync-auto-row">
+                    <span>同步频次</span>
+                    <select id="syncAutoFreq" onchange="syncFreqChanged()">
+                        <option value="low">省流量 · 停顿 30 秒推、每 5 分钟拉</option>
+                        <option value="normal">推荐 · 停顿 10 秒推、每 3 分钟拉</option>
+                        <option value="high">实时 · 停顿 3 秒推、每 1 分钟拉</option>
+                    </select>
+                </div>
+                <div class="sync-auto-tip">自动同步<b>只做合并</b>，永远不会覆盖任何一端；「覆盖」类操作仍需手动点击。已配置云端后无需再手动点按钮。</div>
+            </div>
+            <div class="sync-actions">
+                <button class="sync-action upload is-default" id="syncBtnUpload" onclick="syncUpload('both')" disabled>
+                    <span class="def-badge">默认</span>
+                    <span class="ico">🔄</span><span class="name">双向同步</span>
+                    <span class="desc">合并后两端都写<br>推荐日常使用</span>
+                </button>
+                <button class="sync-action merge" id="syncBtnMerge" onclick="syncDownload('merge')" disabled>
+                    <span class="ico">🔀</span><span class="name">下载并合并</span>
+                    <span class="desc">取并集<br>只更新本机</span>
+                </button>
+                <button class="sync-action overwrite" id="syncBtnOverwrite" onclick="syncDownload('overwrite')" disabled>
+                    <span class="ico">⬇️</span><span class="name">下载并覆盖</span>
+                    <span class="desc">丢弃本机数据<br>以云端为准</span>
+                </button>
+                <button class="sync-action merge" id="syncBtnUpMerge" onclick="syncUpload('merge')" disabled>
+                    <span class="ico">📤</span><span class="name">上传并合并</span>
+                    <span class="desc">取并集<br>只更新云端</span>
+                </button>
+                <button class="sync-action overwrite" id="syncBtnUpOverwrite" onclick="syncUpload('overwrite')" disabled>
+                    <span class="ico">⬆️</span><span class="name">上传并覆盖</span>
+                    <span class="desc">用本机数据<br>覆盖云端</span>
+                </button>
+            </div>
+            <div class="sync-note" style="background:#f6f9ff;border-color:#dbe7fb;">
+                <b>合并规则：</b>题目与学习笔记按 ID 取并集；同一道题的作答记录以<b>最后一次作答时间较晚</b>的一方为准；做题总数、学习时长、每日统计等只增不减的计数<b>逐项取较大值</b>（不会重复累加）；练习进度按保存时间取较新。<br><b>五个操作的区别只在「结果写向哪一端」：</b>双向同步 = 两端都写（默认）；下载并合并 / 下载并覆盖 = 只写本机；上传并合并 / 上传并覆盖 = 只写云端。<b>合并</b>取并集、两边独有数据都不丢；<b>覆盖</b>是单向覆盖，被覆盖那端的独有改动会丢，所以会先弹二次确认。日常用默认的<b>双向同步</b>即可。
+            </div>
+        </div>
+
+        <div class="card">
             <div class="card-header"><h3>同步配置</h3><span class="tag">配置只保存在本机浏览器</span></div>
             <div class="sync-field">
                 <label>云端服务 <span class="hint">两家各自存一份数据，互不相通；切换后需重新连接</span></label>
@@ -848,7 +904,6 @@ body.nav-open{overflow:hidden}
                 <label>同步空间名 <span class="hint">同一名字才会看到同一份数据</span></label>
                 <input type="text" id="syncFile" placeholder="default" autocomplete="off" spellcheck="false">
             </div>
-            <label class="sync-check"><input type="checkbox" id="syncAutoCheck"> 每次打开应用时自动检查云端是否有更新（只提示，不自动覆盖）</label>
             <div class="sync-btns">
                 <button class="btn btn-primary" onclick="syncSaveConfig()">💾 保存配置</button>
                 <button class="btn btn-blue" onclick="syncConnect()">🔌 保存并连接</button>
@@ -859,36 +914,6 @@ body.nav-open{overflow:hidden}
                 <b>选哪家：</b><b>Gitee</b> 在国内直连、速度稳定，推荐日常用；<b>GitHub</b> 适合已有仓库的场景。两家数据互相独立，同一份数据要固定用同一家。<br>
                 <b>多设备使用：</b>在另一台设备上打开同一网址，选择同一家云端服务，填入同一个令牌、仓库名和同步空间名，点「下载并合并」即可拿到全部数据。<br>
                 <b>建议：</b>优先用<b>合并</b>，只有确信本机数据要作废时才用<b>覆盖</b>。
-            </div>
-        </div>
-
-        <div class="card">
-            <div class="card-header"><h3>同步操作</h3><span class="tag" id="syncOpHint">先保存配置并连接</span></div>
-            <div class="sync-actions">
-                <button class="sync-action upload is-default" id="syncBtnUpload" onclick="syncUpload('both')" disabled>
-                    <span class="def-badge">默认</span>
-                    <span class="ico">🔄</span><span class="name">双向同步</span>
-                    <span class="desc">合并后两端都写<br>推荐日常使用</span>
-                </button>
-                <button class="sync-action merge" id="syncBtnMerge" onclick="syncDownload('merge')" disabled>
-                    <span class="ico">🔀</span><span class="name">下载并合并</span>
-                    <span class="desc">取并集<br>只更新本机</span>
-                </button>
-                <button class="sync-action overwrite" id="syncBtnOverwrite" onclick="syncDownload('overwrite')" disabled>
-                    <span class="ico">⬇️</span><span class="name">下载并覆盖</span>
-                    <span class="desc">丢弃本机数据<br>以云端为准</span>
-                </button>
-                <button class="sync-action merge" id="syncBtnUpMerge" onclick="syncUpload('merge')" disabled>
-                    <span class="ico">📤</span><span class="name">上传并合并</span>
-                    <span class="desc">取并集<br>只更新云端</span>
-                </button>
-                <button class="sync-action overwrite" id="syncBtnUpOverwrite" onclick="syncUpload('overwrite')" disabled>
-                    <span class="ico">⬆️</span><span class="name">上传并覆盖</span>
-                    <span class="desc">用本机数据<br>覆盖云端</span>
-                </button>
-            </div>
-            <div class="sync-note" style="background:#f6f9ff;border-color:#dbe7fb;">
-                <b>合并规则：</b>题目与学习笔记按 ID 取并集；同一道题的作答记录以<b>最后一次作答时间较晚</b>的一方为准；做题总数、学习时长、每日统计等只增不减的计数<b>逐项取较大值</b>（不会重复累加）；练习进度按保存时间取较新。<br><b>五个操作的区别只在「结果写向哪一端」：</b>双向同步 = 两端都写（默认）；下载并合并 / 下载并覆盖 = 只写本机；上传并合并 / 上传并覆盖 = 只写云端。<b>合并</b>取并集、两边独有数据都不丢；<b>覆盖</b>是单向覆盖，被覆盖那端的独有改动会丢，所以会先弹二次确认。日常用默认的<b>双向同步</b>即可。
             </div>
         </div>
 
@@ -7687,12 +7712,26 @@ const SYNC_CONFIG_KEY = 'gesp_sync_config_v1';
 const SYNC_DEVICE_KEY = 'gesp_sync_device_v1';
 const SYNC_SNAPSHOT_VERSION = 1;
 
+/* 自动双向同步的三档频次。三个数字各管一件事：
+   debounce —— 数据变动后等多久才推（连续刷题时只在「停顿」后推一次）
+   minGap   —— 两次自动推送的最小间隔（硬下限，防止打爆 API 配额与提交历史）
+   pull     —— 定时从云端拉取的周期（拿其他设备的更新） */
+const AUTO_SYNC_PRESETS = {
+    low:    { label: '省流量', debounce: 30000, minGap: 120000, pull: 300000 },
+    normal: { label: '推荐',   debounce: 10000, minGap: 45000,  pull: 180000 },
+    high:   { label: '实时',   debounce: 3000,  minGap: 15000,  pull: 60000 }
+};
+
 function syncDefaultConfig() {
     return {
         provider: 'github',
         token: '', repo: 'gesp-sync-data',
         giteeToken: '', giteeOwner: '', giteeRepo: 'gesp-sync-data',
-        space: 'default', autoCheck: false,
+        space: 'default',
+        /* autoCheck 是旧字段（打开时检查云端、只提示），保留只为兼容历史配置；
+           实际行为已由 autoOn + autoFreq 接管。 */
+        autoCheck: false,
+        autoOn: true, autoFreq: 'normal',
         lastSyncAt: 0, cloudSavedAt: 0, cloudSha: ''
     };
 }
@@ -7715,6 +7754,10 @@ function syncLoadConfig() {
     /* 历史配置里可能已经存着整串主页地址：加载时就收敛，否则 renderSync 会把
        那个 URL 原样写回输入框，看起来像「修了没用」。 */
     syncConfig.giteeOwner = normalizeGiteeOwner(syncConfig.giteeOwner);
+    /* 自动同步新字段：缺失即取默认值。注意默认是「开启」——
+       这是产品决策：同步的价值在换设备时才体现，而人会忘记点按钮。 */
+    if (typeof syncConfig.autoOn !== 'boolean') syncConfig.autoOn = true;
+    if (!AUTO_SYNC_PRESETS[syncConfig.autoFreq]) syncConfig.autoFreq = 'normal';
 }
 function syncSaveConfigStore() {
     try { localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(syncConfig)); }
@@ -8447,6 +8490,183 @@ function applySnapshot(snapshot, mode) {
     return merged;
 }
 
+/* ================================================================
+   自动双向同步
+   ----------------------------------------------------------------
+   数据一有变动就自动合并到云端，换设备时不必记得点按钮。
+   三层节流（缺一不可）：
+     1) 防抖   —— 连续刷题只在停手后推一次，不是一题一次请求；
+     2) 最小间隔 —— 硬下限，防止密集操作打爆 API 配额，也避免云端仓库
+        被刷出一长串 commit；
+     3) 定时拉取 —— 反向补齐，拿其他设备写上去的更新。
+   安全底线：自动同步**只走合并**（syncUpload('both')），永不覆盖。
+   覆盖永远只能由人手动触发 —— 自动覆盖是数据静默丢失的经典成因。
+   ================================================================ */
+let autoPushTimer = null;
+let autoPullTimer = null;
+let autoDirtyAt = 0;      // 本机最后一次业务写入时间（0 表示无待推改动）
+let autoLastPushAt = 0;   // 上次自动推送完成时间
+let autoRunning = false;  // 自动同步是否正在跑（与手动的 syncBusy 配合，避免并发）
+
+function autoPreset() {
+    return AUTO_SYNC_PRESETS[syncConfig.autoFreq] || AUTO_SYNC_PRESETS.normal;
+}
+function autoReady() {
+    return !!(syncConfig.autoOn && cloudToken());
+}
+/* 本机业务数据发生写入 —— 排一次防抖推送 */
+function markLocalDirty() {
+    if (!autoReady()) return;
+    autoDirtyAt = Date.now();
+    if (autoPushTimer) clearTimeout(autoPushTimer);
+    autoPushTimer = setTimeout(autoPush, autoPreset().debounce);
+    renderAutoState();
+}
+function scheduleAutoPush(delay) {
+    if (autoPushTimer) clearTimeout(autoPushTimer);
+    autoPushTimer = setTimeout(autoPush, delay);
+}
+async function autoPush() {
+    if (!autoReady() || syncBusy || autoRunning) return;
+    const cfg = autoPreset();
+    const gap = Date.now() - autoLastPushAt;
+    if (gap < cfg.minGap) { scheduleAutoPush(cfg.minGap - gap + 500); return; }
+    autoRunning = true;
+    renderAutoState();
+    try {
+        if (!syncRemote) {
+            const r = await cloudProbeRepo();
+            if (!r) return;
+            syncRemote = r;
+        }
+        /* 双向同步：合并后两端都写。既把本机改动送上去，也顺带吸收云端改动，
+           一步对齐，不需要「先拉再推」两次往返。 */
+        await syncUpload('both');
+        autoLastPushAt = Date.now();
+        autoDirtyAt = 0;
+    } catch (e) {
+        /* 自动同步失败绝不打断使用：只记日志，等下一个周期自然重试 */
+        syncLog('自动同步未成功：' + syncErrorMessage(e), 'warn');
+    } finally {
+        autoRunning = false;
+        renderSync();
+    }
+}
+/* 定时拉取：本机还有待推改动时跳过，免得刚写的东西被云端旧数据掺进来 */
+async function autoPull() {
+    if (!autoReady() || syncBusy || autoRunning) { scheduleAutoPull(); return; }
+    if (autoDirtyAt) { scheduleAutoPull(); return; }
+    autoRunning = true;
+    renderAutoState();
+    try {
+        if (!syncRemote) {
+            const r = await cloudProbeRepo();
+            if (!r) return;
+            syncRemote = r;
+        }
+        const cloud = await syncReadCloud();
+        if (!cloud) return;
+        const cs = (cloud.snapshot && cloud.snapshot.savedAt) || 0;
+        syncConfig.cloudSavedAt = cs;
+        syncConfig.cloudSha = cloud.sha || '';
+        syncSaveConfigStore();
+        if (cs > lastLocalSavedAt() + 30000) await syncDownload('merge');
+    } catch (e) {
+        syncLog('自动拉取未成功：' + syncErrorMessage(e), 'warn');
+    } finally {
+        autoRunning = false;
+        renderSync();
+    }
+    scheduleAutoPull();
+}
+function scheduleAutoPull() {
+    if (autoPullTimer) clearTimeout(autoPullTimer);
+    if (!autoReady()) return;
+    autoPullTimer = setTimeout(autoPull, autoPreset().pull);
+}
+function stopAutoSync() {
+    if (autoPushTimer) { clearTimeout(autoPushTimer); autoPushTimer = null; }
+    if (autoPullTimer) { clearTimeout(autoPullTimer); autoPullTimer = null; }
+    autoDirtyAt = 0;
+    /* 连带刷新状态显示：调用方可能是「直接改配置」的代码路径，
+       不刷新界面会停在「已开启」，与实际行为不符。 */
+    renderAutoState();
+}
+function startAutoSync() {
+    stopAutoSync();
+    if (!autoReady()) { renderAutoState(); return; }
+    scheduleAutoPull();
+    renderAutoState();
+}
+function renderAutoState() {
+    const st = document.getElementById('syncAutoState');
+    const sw = document.getElementById('syncAutoOn');
+    const fq = document.getElementById('syncAutoFreq');
+    if (sw) sw.checked = !!syncConfig.autoOn;
+    if (fq) fq.value = syncConfig.autoFreq || 'normal';
+    if (!st) return;
+    const busy = autoRunning || syncBusy;
+    st.className = 'sync-auto-state' + (busy ? ' run' : (autoReady() && syncRemote ? ' on' : ''));
+    if (busy) st.textContent = '正在同步…';
+    else if (!syncConfig.autoOn) st.textContent = '未开启';
+    else if (!cloudToken()) st.textContent = '待配置云端';
+    else if (!syncRemote) st.textContent = '已开启 · 待连接';
+    else if (autoDirtyAt) st.textContent = '已开启 · 待推送';
+    else st.textContent = '已开启 · ' + autoPreset().label;
+}
+function syncToggleAuto() {
+    const el = document.getElementById('syncAutoOn');
+    syncConfig.autoOn = !!(el && el.checked);
+    syncSaveConfigStore();
+    if (syncConfig.autoOn) {
+        startAutoSync();
+        syncLog('已开启自动双向同步（' + autoPreset().label + '）', 'ok');
+        showToast('✅ 已开启自动双向同步', 'success');
+    } else {
+        stopAutoSync();
+        syncLog('已关闭自动双向同步', 'warn');
+        showToast('已关闭自动双向同步', 'warning');
+    }
+    renderSync();
+}
+function syncFreqChanged() {
+    const el = document.getElementById('syncAutoFreq');
+    if (el && AUTO_SYNC_PRESETS[el.value]) syncConfig.autoFreq = el.value;
+    syncSaveConfigStore();
+    startAutoSync();
+    syncLog('同步频次已改为「' + autoPreset().label + '」', 'ok');
+    renderSync();
+}
+/* 挂到 localStorage 写入层：任何业务 key 的写入都算「本机有改动」。
+   只认本应用的 gesp_* ，但排除 gesp_sync_*（同步自身的配置与设备号）——
+   否则同步一次就把自己标脏，会形成自激循环。
+   syncBusy 期间也要跳过：那是同步把合并结果写回本机，不是用户改动。 */
+(function hookLocalWrites() {
+    const rawSet = Storage.prototype.setItem;
+    Storage.prototype.setItem = function (key, value) {
+        rawSet.call(this, key, value);
+        try {
+            if (this !== window.localStorage) return;
+            const k = String(key);
+            if (k.indexOf('gesp_') !== 0) return;
+            if (k.indexOf('gesp_sync_') === 0) return;
+            if (syncBusy) return;
+            markLocalDirty();
+        } catch (e) { /* 钩子绝不能干扰正常保存 */ }
+    };
+})();
+/* 页面隐藏/切走前把待推的改动送出去 —— 移动端切 App 时这个时机最可靠，
+   等不到防抖计时器。 */
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'hidden') return;
+    if (!autoReady() || syncBusy || !autoDirtyAt) return;
+    if (Date.now() - autoLastPushAt > 5000) autoPush();
+});
+window.addEventListener('pagehide', () => {
+    if (!autoReady() || syncBusy || !autoDirtyAt) return;
+    autoPush();
+});
+
 /* ---- 状态渲染 ---- */
 function setSyncBusy(b) { syncBusy = b; renderSync(); }
 function renderSync() {
@@ -8472,7 +8692,10 @@ function renderSync() {
         document.getElementById('giteeOwner').value = syncConfig.giteeOwner || '';
         document.getElementById('giteeRepo').value = syncConfig.giteeRepo || '';
         document.getElementById('syncFile').value = syncConfig.space || '';
-        document.getElementById('syncAutoCheck').checked = !!syncConfig.autoCheck;
+        const autoOnEl = document.getElementById('syncAutoOn');
+        if (autoOnEl) autoOnEl.checked = !!syncConfig.autoOn;
+        const autoFreqEl = document.getElementById('syncAutoFreq');
+        if (autoFreqEl) autoFreqEl.value = syncConfig.autoFreq || 'normal';
         syncFormFilled = true;
         syncToggleProvider();
     }
@@ -8490,6 +8713,7 @@ function renderSync() {
     });
     const hint = document.getElementById('syncOpHint');
     if (hint) hint.textContent = syncBusy ? '同步进行中…' : (connected ? '可以开始同步' : '先保存配置并连接');
+    renderAutoState();
     syncRenderLog();
 }
 
@@ -8503,7 +8727,10 @@ function syncReadForm() {
     syncConfig.giteeOwner = normalizeGiteeOwner(document.getElementById('giteeOwner').value);
     syncConfig.giteeRepo = (document.getElementById('giteeRepo').value || '').trim() || 'gesp-sync-data';
     syncConfig.space = (document.getElementById('syncFile').value || '').trim() || 'default';
-    syncConfig.autoCheck = !!document.getElementById('syncAutoCheck').checked;
+    const autoOnEl = document.getElementById('syncAutoOn');
+    if (autoOnEl) syncConfig.autoOn = !!autoOnEl.checked;
+    const autoFreqEl = document.getElementById('syncAutoFreq');
+    if (autoFreqEl && AUTO_SYNC_PRESETS[autoFreqEl.value]) syncConfig.autoFreq = autoFreqEl.value;
     syncSaveConfigStore();
 }
 /* 只负责显隐两家的字段 */
@@ -8550,7 +8777,7 @@ function syncClearConfig() {
     const prv = document.querySelector('input[name="syncProvider"][value="github"]');
     if (prv) prv.checked = true;
     syncToggleProvider();
-    document.getElementById('syncAutoCheck').checked = false;
+    stopAutoSync();
     hideSyncBanner();
     syncLog('已清除本机同步配置', 'warn');
     renderSync();
@@ -8604,6 +8831,8 @@ async function syncConnect() {
     } finally {
         setSyncBusy(false);
     }
+    /* 连接（或重连）成功后重置自动同步调度：换了服务商/空间名，定时器要重建 */
+    startAutoSync();
 }
 function syncRequireReady() {
     if (!cloudToken()) { showToast('⚠️ 请先填写 ' + cloudLabel() + ' 令牌并保存配置', 'error'); switchPage('page-sync'); return false; }
@@ -8851,7 +9080,10 @@ document.getElementById('levelSelector').value = currentLevel;
 renderAll();
 updateCountdown();
 if (syncConfig.autoCheck && cloudToken()) setTimeout(syncAutoCheckCloud, 1000);
-console.log('🏆 GESP赢家宝典 v9.1 已加载！[sync-fix+gitee 2026-09-15]');
+/* 自动双向同步（默认开启）。未配置令牌时 autoReady() 为假，调度器自行空转，
+   不会发出任何请求。 */
+startAutoSync();
+console.log('🏆 GESP赢家宝典 v9.1 已加载！[autosync 2026-09-16]');
 console.log('📚 当前级别：' + LEVEL_NAMES[currentLevel] + '，共 ' + questions.length + ' 道题');
 console.log('💾 数据来源：' + (loaded ? 'localStorage（上次保存）' : '默认初始数据'));
 console.log('⏳ 倒计时可编辑 · 🎯 每日目标可设置 · 📊 做题数据自动记录');
