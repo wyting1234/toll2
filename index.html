@@ -8544,9 +8544,10 @@ function autoFormat(sum, dir) {
     const moved = (sum.local.q0 !== sum.local.q1) || (sum.local.l0 !== sum.local.l1) ||
                   (sum.cloud.q0 !== sum.cloud.q1) || (sum.cloud.l0 !== sum.cloud.l1);
     const detail = lv.length
-        ? ' · 变动：' + lv.map(x => x.k + ' ' +
-              (x.dq ? (x.dq > 0 ? '+' : '') + x.dq + ' 题' : '') +
-              (x.dl ? (x.dl > 0 ? '+' : '') + x.dl + ' 条' : '')).join('、')
+        ? ' · 变动：' + lv.map(x => x.k + ' ' + [
+              x.dq ? (x.dq > 0 ? '+' : '') + x.dq + ' 题' : '',
+              x.dl ? (x.dl > 0 ? '+' : '') + x.dl + ' 条' : ''
+          ].filter(Boolean).join(' / ')).join('、')
         : (moved ? '' : ' · 两端已一致，无内容变动');
     return head + ' · 用时 ' + sec + ' 秒 · 本机 ' + sum.local.q0 + '→' + sum.local.q1 + ' 题/' +
            sum.local.l0 + '→' + sum.local.l1 + ' 条 · 云端 ' + sum.cloud.q0 + '→' + sum.cloud.q1 + ' 题/' +
