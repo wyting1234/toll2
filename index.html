@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<!-- build: 2026-09-16a (auto bidirectional sync | ops above config | gitee empty-array fix | owner normalize | 422 idempotent | 5 sync ops | bankfill 491q) -->
+<!-- build: 2026-09-16b (auto sync activity log | when+what display | auto bidirectional sync | ops above config | gitee empty-array fix | owner normalize | 422 idempotent | 5 sync ops | bankfill 491q) -->
 <title>GESP赢家宝典 · v9.1 · 学习统计版</title>
 <script>/* SheetJS xlsx 0.18.5 (Apache-2.0) 内嵌版本，消除 CDN 依赖 */
 /*! xlsx.js (C) 2013-present SheetJS -- http://sheetjs.com */
@@ -94,6 +94,10 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
 .sync-auto-row{display:flex;align-items:center;gap:9px;margin-top:10px;font-size:12px;color:#5e6f8d;flex-wrap:wrap}
 .sync-auto-row select{padding:5px 9px;border:1px solid #dbe3ee;border-radius:7px;font-size:12px;color:#1e293b;background:#fff;outline:none;font-family:inherit;cursor:pointer;flex:1;min-width:210px}
 .sync-auto-tip{margin-top:9px;font-size:11.5px;line-height:1.7;color:#7c8aa0}
+.sync-auto-last{margin-top:10px;padding:9px 11px;border-radius:9px;background:#fff;border:1px dashed #c9dbf5;font-size:11.5px;line-height:1.85;color:#5e6f8d}
+.sync-auto-last b{color:#1d4ed8;font-weight:600}
+.sync-auto-last .when{color:#0d8a5f;font-weight:700}
+.sync-auto-last .dim{color:#93a3ba}
 .sync-actions{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
 .sync-action{position:relative;padding:16px 12px;border-radius:12px;border:1px solid #e2e9f2;background:#fff;cursor:pointer;text-align:center;transition:.15s;font-family:inherit}
 .sync-action:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 6px 18px rgba(30,58,95,.1);border-color:#c7d7ee}
@@ -115,6 +119,7 @@ body{background:#f4f7fc;display:flex;min-height:100vh;color:#1e293b}
 .sync-log .ln.err{color:#fca5a5}
 .sync-log .ln.warn{color:#fcd34d}
 .sync-log .ln.meta{color:#7a8aa5}
+.sync-log .ln.auto{color:#38bdf8}
 .sync-note{font-size:12px;line-height:1.7;color:#5e6f8d;background:#fff8ed;border:1px solid #fde8c4;border-radius:10px;padding:11px 14px;margin-top:14px}
 .sync-note b{color:#b45309}
 .sync-kv{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px dashed #e8edf6;font-size:12.5px}
@@ -833,6 +838,7 @@ body.nav-open{overflow:hidden}
                     </select>
                 </div>
                 <div class="sync-auto-tip">自动同步<b>只做合并</b>，永远不会覆盖任何一端；「覆盖」类操作仍需手动点击。已配置云端后无需再手动点按钮。</div>
+                <div class="sync-auto-last" id="syncAutoLast">尚未发生自动同步</div>
             </div>
             <div class="sync-actions">
                 <button class="sync-action upload is-default" id="syncBtnUpload" onclick="syncUpload('both')" disabled>
@@ -7732,6 +7738,9 @@ function syncDefaultConfig() {
            实际行为已由 autoOn + autoFreq 接管。 */
         autoCheck: false,
         autoOn: true, autoFreq: 'normal',
+        /* 自动同步留痕：最近一次自动同步的时间与结果描述。
+           本机记录，不上云（gesp_sync_ 前缀被排除在同步之外）。 */
+        lastAutoAt: 0, lastAutoDesc: '',
         lastSyncAt: 0, cloudSavedAt: 0, cloudSha: ''
     };
 }
@@ -7758,6 +7767,8 @@ function syncLoadConfig() {
        这是产品决策：同步的价值在换设备时才体现，而人会忘记点按钮。 */
     if (typeof syncConfig.autoOn !== 'boolean') syncConfig.autoOn = true;
     if (!AUTO_SYNC_PRESETS[syncConfig.autoFreq]) syncConfig.autoFreq = 'normal';
+    if (typeof syncConfig.lastAutoAt !== 'number') syncConfig.lastAutoAt = 0;
+    if (typeof syncConfig.lastAutoDesc !== 'string') syncConfig.lastAutoDesc = '';
 }
 function syncSaveConfigStore() {
     try { localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(syncConfig)); }
@@ -8508,6 +8519,73 @@ let autoDirtyAt = 0;      // 本机最后一次业务写入时间（0 表示无�
 let autoLastPushAt = 0;   // 上次自动推送完成时间
 let autoRunning = false;  // 自动同步是否正在跑（与手动的 syncBusy 配合，避免并发）
 
+/* ============ 自动同步的「留痕」 ============
+   为什么必须有：自动同步原先【成功时一声不响】—— 只有失败才写一行日志。
+   结果是用户既不知道它有没有在跑，也不知道同步了什么，只能靠猜。
+   这里把每次自动同步的时间与结果同时写进三处：状态条、明细块、同步日志。 */
+function autoClock(ts) {
+    const d = new Date(ts), p = n => (n < 10 ? '0' : '') + n;
+    return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function autoRelTime(ts) {
+    const d = Date.now() - ts;
+    if (d < 60000) return '刚刚';
+    if (d < 3600000) return Math.floor(d / 60000) + ' 分钟前';
+    if (d < 86400000) return Math.floor(d / 3600000) + ' 小时前';
+    return Math.floor(d / 86400000) + ' 天前';
+}
+/* 把摘要翻译成一句人话：方向 · 用时 · 两端各变了多少 · 具体哪些级别动了 */
+function autoFormat(sum, dir) {
+    const head = dir === 'pull' ? '定时拉取' : '双向合并';
+    if (!sum) return head + ' · 未取得结果（可能被中断）';
+    if (sum.empty) return head + ' · 云端暂无数据，未做任何改动';
+    const sec = ((sum.ms || 0) / 1000).toFixed(1);
+    const lv = sum.levels || [];
+    const moved = (sum.local.q0 !== sum.local.q1) || (sum.local.l0 !== sum.local.l1) ||
+                  (sum.cloud.q0 !== sum.cloud.q1) || (sum.cloud.l0 !== sum.cloud.l1);
+    const detail = lv.length
+        ? ' · 变动：' + lv.map(x => x.k + ' ' +
+              (x.dq ? (x.dq > 0 ? '+' : '') + x.dq + ' 题' : '') +
+              (x.dl ? (x.dl > 0 ? '+' : '') + x.dl + ' 条' : '')).join('、')
+        : (moved ? '' : ' · 两端已一致，无内容变动');
+    return head + ' · 用时 ' + sec + ' 秒 · 本机 ' + sum.local.q0 + '→' + sum.local.q1 + ' 题/' +
+           sum.local.l0 + '→' + sum.local.l1 + ' 条 · 云端 ' + sum.cloud.q0 + '→' + sum.cloud.q1 + ' 题/' +
+           sum.cloud.l0 + '→' + sum.cloud.l1 + ' 条' + detail;
+}
+function autoSaveNote(text) {
+    syncConfig.lastAutoAt = Date.now();
+    syncConfig.lastAutoDesc = text;
+    syncSaveConfigStore();
+    syncLog('【自动】' + text, text.indexOf('未成功') === 0 ? 'warn' : 'auto');
+}
+function autoNote(sum, dir) {
+    if (sum && sum.error) { autoNoteFail(sum.error); return; }
+    autoSaveNote(autoFormat(sum, dir));
+    renderAutoState();
+}
+function autoNoteFail(msg) {
+    autoSaveNote('未成功：' + msg);
+    renderAutoState();
+}
+/* 明细块：把「最近一次自动同步」常驻在自动同步区，不用去翻日志 */
+function renderAutoLast() {
+    const el = document.getElementById('syncAutoLast');
+    if (!el) return;
+    let html;
+    if (!syncConfig.autoOn) {
+        html = '<span class="dim">自动双向同步已关闭，不再记录。</span>';
+    } else if (!syncConfig.lastAutoAt) {
+        html = '<span class="dim">还没有自动同步过。数据有变动（或另一台设备有更新）时会自动合并，' +
+               '完成后把「什么时候、同步了什么」记在这里。</span>';
+    } else {
+        const t = syncConfig.lastAutoAt;
+        html = '<b>最近一次自动同步</b> <span class="when">' + autoClock(t) + '</span> ' +
+               '<span class="dim">（' + autoRelTime(t) + '）</span><br>' +
+               escapeHtml(syncConfig.lastAutoDesc || '') +
+               '<br><span class="dim">完整历史见下方「同步日志」。</span>';
+    }
+    el.innerHTML = html;
+}
 function autoPreset() {
     return AUTO_SYNC_PRESETS[syncConfig.autoFreq] || AUTO_SYNC_PRESETS.normal;
 }
@@ -8541,12 +8619,13 @@ async function autoPush() {
         }
         /* 双向同步：合并后两端都写。既把本机改动送上去，也顺带吸收云端改动，
            一步对齐，不需要「先拉再推」两次往返。 */
-        await syncUpload('both');
+        const sum = await syncUpload('both');
         autoLastPushAt = Date.now();
         autoDirtyAt = 0;
+        autoNote(sum, 'push');
     } catch (e) {
         /* 自动同步失败绝不打断使用：只记日志，等下一个周期自然重试 */
-        syncLog('自动同步未成功：' + syncErrorMessage(e), 'warn');
+        autoNoteFail(syncErrorMessage(e));
     } finally {
         autoRunning = false;
         renderSync();
@@ -8570,9 +8649,15 @@ async function autoPull() {
         syncConfig.cloudSavedAt = cs;
         syncConfig.cloudSha = cloud.sha || '';
         syncSaveConfigStore();
-        if (cs > lastLocalSavedAt() + 30000) await syncDownload('merge');
+        /* 只有「云端确实更新了」才拉、才记账 —— 否则每 3 分钟一条日志会把
+           同步日志刷成噪音，反而看不清真正发生了什么。 */
+        if (cs > lastLocalSavedAt() + 30000) {
+            const sum = await syncDownload('merge');
+            if (sum && sum.error) autoNoteFail(sum.error);
+            else if (sum) autoNote(sum, 'pull');
+        }
     } catch (e) {
-        syncLog('自动拉取未成功：' + syncErrorMessage(e), 'warn');
+        autoNoteFail(syncErrorMessage(e));
     } finally {
         autoRunning = false;
         renderSync();
@@ -8604,15 +8689,19 @@ function renderAutoState() {
     const fq = document.getElementById('syncAutoFreq');
     if (sw) sw.checked = !!syncConfig.autoOn;
     if (fq) fq.value = syncConfig.autoFreq || 'normal';
-    if (!st) return;
-    const busy = autoRunning || syncBusy;
-    st.className = 'sync-auto-state' + (busy ? ' run' : (autoReady() && syncRemote ? ' on' : ''));
-    if (busy) st.textContent = '正在同步…';
-    else if (!syncConfig.autoOn) st.textContent = '未开启';
-    else if (!cloudToken()) st.textContent = '待配置云端';
-    else if (!syncRemote) st.textContent = '已开启 · 待连接';
-    else if (autoDirtyAt) st.textContent = '已开启 · 待推送';
-    else st.textContent = '已开启 · ' + autoPreset().label;
+    if (st) {
+        const busy = autoRunning || syncBusy;
+        st.className = 'sync-auto-state' + (busy ? ' run' : (autoReady() && syncRemote ? ' on' : ''));
+        /* 「上次 HH:MM」直接挂在状态上：不展开任何东西也能看出它最近有没有干活 */
+        const last = syncConfig.lastAutoAt ? ' · 上次 ' + autoClock(syncConfig.lastAutoAt).slice(0, 5) : '';
+        if (busy) st.textContent = '正在同步…';
+        else if (!syncConfig.autoOn) st.textContent = '未开启';
+        else if (!cloudToken()) st.textContent = '待配置云端';
+        else if (!syncRemote) st.textContent = '已开启 · 待连接';
+        else if (autoDirtyAt) st.textContent = '已开启 · 待推送';
+        else st.textContent = '已开启 · ' + autoPreset().label + last;
+    }
+    renderAutoLast();
 }
 function syncToggleAuto() {
     const el = document.getElementById('syncAutoOn');
@@ -8850,12 +8939,43 @@ function syncRequireReady() {
  * 现在的语义：本机 ∪ 云端 → 写回云端，同时应用到本机。
  * 两台设备各自的独有数据都保留，点一次即可对齐。
  */
+/* ---- 自动同步「同步了什么」用的计数与差分 ----
+   同步日志原本只报总数（本机 248→248 题），用户看不出到底是哪块动了。
+   这里按级别统计，让「变了什么」能落到具体级别上。
+   两个函数由 syncUpload / syncDownload 共用，避免各写一套后漂移。 */
+function perLevelCounts() {
+    const m = {};
+    LEVEL_KEYS.forEach(k => {
+        m[k] = { q: (levelData[k].questions || []).length, l: (levelData[k].learnings || []).length };
+    });
+    return m;
+}
+function levelDiff(before, after) {
+    const d = [];
+    LEVEL_KEYS.forEach(k => {
+        const q = ((after[k] && after[k].q) || 0) - ((before[k] && before[k].q) || 0);
+        const l = ((after[k] && after[k].l) || 0) - ((before[k] && before[k].l) || 0);
+        if (q || l) d.push({ k: k, dq: q, dl: l });
+    });
+    return d;
+}
+
 async function syncUpload(mode) {
     /* mode: 'both'（默认，双向）| 'merge'（上传并合并）| 'overwrite'（上传并覆盖）
        'both' 与 'merge' 的合并计算完全相同 —— 差别只在「结果要不要也应用到本机」。
        把两者写在同一个函数里，是为了永远只有一套合并规则，不会两边跑偏。 */
     mode = mode || 'both';
     if (syncBusy) { showToast('⚠️ 同步正在进行中，请稍候', 'warning'); return; }
+    const _lvBefore = perLevelCounts();
+    const _t0 = Date.now();
+    /* 同步摘要：调用方（自动同步）据此写出「什么时候、同步了什么」。
+       手动点击的调用点全是 onclick="syncUpload(...)"，忽略返回值，行为不变。 */
+    const _sum = (modeX, q0, l0, cq0, cl0, cq1, cl1) => ({
+        mode: modeX, at: Date.now(), ms: Date.now() - _t0,
+        local: { q0: q0, q1: countQuestionsAll(), l0: l0, l1: countLearningsAll() },
+        cloud: { q0: cq0, q1: cq1, l0: cl0, l1: cl1 },
+        levels: levelDiff(_lvBefore, perLevelCounts())
+    });
     if (!syncRequireReady()) return;
     if (mode === 'overwrite' && !confirm('确定用本机数据覆盖云端吗？\n\n云端已有的题库、学习库、做题统计都会以本机为准，其他设备在云端留下的改动会丢失且无法撤销。\n建议改用「上传并合并」或「双向同步」。')) return;
     setSyncBusy(true);
@@ -8890,8 +9010,11 @@ async function syncUpload(mode) {
             syncLog('已用本机数据覆盖云端：云端 ' + beforeCloud.q + '→' + countSnapshotQuestions(snap) + ' 题、' +
                     beforeCloud.l + '→' + countSnapshotLearnings(snap) + ' 条（本机未改动）', 'ok');
             showToast('✅ 已用本机数据覆盖云端', 'success');
+            const _so = _sum('overwrite', countQuestionsAll(), countLearningsAll(),
+                             beforeCloud.q, beforeCloud.l,
+                             countSnapshotQuestions(snap), countSnapshotLearnings(snap));
             hideSyncBanner();
-            return;
+            return _so;
         }
 
         // 云端还没有数据 → 首次上传，直接写本机快照
@@ -8905,8 +9028,10 @@ async function syncUpload(mode) {
             syncLog('云端暂无数据，已把本机 ' + countSnapshotQuestions(snap) + ' 道题、' +
                     countSnapshotLearnings(snap) + ' 条学习记录作为首次快照上传', 'ok');
             showToast('✅ 已上传到云端（首次）', 'success');
+            const _sf = _sum('first', countQuestionsAll(), countLearningsAll(),
+                             0, 0, countSnapshotQuestions(snap), countSnapshotLearnings(snap));
             hideSyncBanner();
-            return;
+            return _sf;
         }
 
         // 云端有数据 → 双向合并
@@ -8955,10 +9080,14 @@ async function syncUpload(mode) {
                     `${beforeCloud.l}→${countSnapshotLearnings(outSnap)} 条（本机未改动，仍为 ${afterLocal.q} 题 / ${afterLocal.l} 条）`, 'ok');
             showToast('✅ 已上传合并结果（云端已更新，本机未改动）', 'success');
         }
+        const _sc = _sum(mode, beforeLocal.q, beforeLocal.l, beforeCloud.q, beforeCloud.l,
+                         countSnapshotQuestions(outSnap), countSnapshotLearnings(outSnap));
         hideSyncBanner();
+        return _sc;
     } catch (e) {
         syncLog('同步失败：' + syncErrorMessage(e), 'err');
         showToast('❌ 同步失败：' + syncErrorMessage(e), 'error');
+        return { error: syncErrorMessage(e) };
     } finally {
         setSyncBusy(false);
     }
@@ -9000,6 +9129,8 @@ function applyMergedToLocal(merged) {
     updateCountdown();
 }
 async function syncDownload(mode) {
+    const _lvBefore = perLevelCounts();
+    const _t0 = Date.now();
     if (syncBusy) { showToast('⚠️ 同步正在进行中，请稍候', 'warning'); return; }
     if (!syncRequireReady()) return;
     if (mode === 'overwrite' && !confirm('确定用云端数据覆盖本机吗？\n\n本机的题库、学习库、做题统计都会以云端为准，本机改动会丢失且无法撤销。\n建议改用「下载并合并」，或先点「备份JSON」。')) return;
@@ -9010,9 +9141,12 @@ async function syncDownload(mode) {
         if (!cloud) {
             syncLog('云端暂无数据，请先上传一次', 'warn');
             showToast('ℹ️ 云端还没有数据', 'warning');
-            return;
+            return { mode: mode, at: Date.now(), ms: Date.now() - _t0, empty: true,
+                     local: { q0: countQuestionsAll(), q1: countQuestionsAll(), l0: countLearningsAll(), l1: countLearningsAll() },
+                     cloud: { q0: 0, q1: 0, l0: 0, l1: 0 }, levels: [] };
         }
         const before = { q: countSnapshotQuestions(cloud.snapshot), l: countSnapshotLearnings(cloud.snapshot) };
+        const localBefore = { q: countQuestionsAll(), l: countLearningsAll() };
         applySnapshot(cloud.snapshot, mode);
         syncConfig.cloudSavedAt = cloud.snapshot.savedAt || 0;
         syncConfig.cloudSha = cloud.sha || '';
@@ -9022,9 +9156,14 @@ async function syncDownload(mode) {
         const after = { q: countQuestionsAll(), l: countLearningsAll() };
         syncLog(`云端快照：${before.q} 题 / ${before.l} 条学习记录 → 应用后本机：${after.q} 题 / ${after.l} 条`, 'ok');
         showToast(mode === 'merge' ? '✅ 已合并云端数据' : '✅ 已用云端数据覆盖本机', 'success');
+        return { mode: mode, at: Date.now(), ms: Date.now() - _t0,
+                 local: { q0: localBefore.q, q1: after.q, l0: localBefore.l, l1: after.l },
+                 cloud: { q0: before.q, q1: before.q, l0: before.l, l1: before.l },
+                 levels: levelDiff(_lvBefore, perLevelCounts()) };
     } catch (e) {
         syncLog('下载失败：' + syncErrorMessage(e), 'err');
         showToast('❌ 下载失败：' + syncErrorMessage(e), 'error');
+        return { error: syncErrorMessage(e) };
     } finally {
         setSyncBusy(false);
     }
@@ -9083,7 +9222,7 @@ if (syncConfig.autoCheck && cloudToken()) setTimeout(syncAutoCheckCloud, 1000);
 /* 自动双向同步（默认开启）。未配置令牌时 autoReady() 为假，调度器自行空转，
    不会发出任何请求。 */
 startAutoSync();
-console.log('🏆 GESP赢家宝典 v9.1 已加载！[autosync 2026-09-16]');
+console.log('🏆 GESP赢家宝典 v9.1 已加载！[autosync 2026-09-16b]');
 console.log('📚 当前级别：' + LEVEL_NAMES[currentLevel] + '，共 ' + questions.length + ' 道题');
 console.log('💾 数据来源：' + (loaded ? 'localStorage（上次保存）' : '默认初始数据'));
 console.log('⏳ 倒计时可编辑 · 🎯 每日目标可设置 · 📊 做题数据自动记录');
